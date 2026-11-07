@@ -2,6 +2,8 @@ import { layoutMindmap } from './mindmap-layout.js';
 import { LANE_LABELS, crossProjectActiveText, crossProjectLeafText, crossProjectLinkText, crossProjectNodeText } from './model-labels.js';
 import { isBrowserFullscreen, modelNote, modelText, workProjectDisplay } from './model-labels.js';
 import { activityPhase, activityText } from './activity.js';
+import { formatDuration, formatTokens, tokenBreakdown, rangeCounters } from './counters.js';
+import { createWakeLock } from './wake-lock.js';
 
 const $ = id => document.getElementById(id);
 const svg = $('mindmap');
@@ -47,6 +49,22 @@ let restoredDetails = null, restoredConnection = null;
 const expanded = new Set(), collapsed = new Set();
 const seenDelegations = new Set();
 let wave = 0, edgeSequence = 0;
+let counterRange = {};
+let lastTickAria = -Infinity;
+const wakeTitles = {
+  'bật': 'Đang chặn tắt màn hình và trình bảo vệ màn hình do không hoạt động.',
+  'đang chờ': 'Đang xin quyền giữ màn hình sáng.',
+  'đang chờ (tab ẩn)': 'Sẽ xin lại khóa khi tab hiện và vẫn ở chế độ chỉ sơ đồ.',
+  'bị chặn': 'Không giữ được màn hình sáng; tối đa ba lần xin với thời gian chờ tăng dần. Thoát rồi vào lại để thử lại.',
+  'không hỗ trợ': 'Trình duyệt không có Screen Wake Lock API.',
+  'tắt': 'Chỉ giữ màn hình sáng trong chế độ chỉ sơ đồ.',
+};
+const wakeLock = createWakeLock({ navigator: globalThis.navigator, document, onChange(value) {
+  const label = $('wake-lock-status');
+  const message = `Giữ màn hình sáng: ${value}`;
+  if (label) { label.textContent = message; label.title = wakeTitles[value]; }
+  if (mapOnly) announceMapStatus(message);
+} });
 if ($('clear-detail') && $('clear-detail').hidden === undefined) $('clear-detail').hidden = true;
 
 function halos(item, radius, color) {
@@ -117,6 +135,7 @@ function description(node, now = Date.now()) {
     const activeCross = run.crossProject && selectedCrossRunId === run.id ? `, ${crossProjectActiveText(run)}` : '';
     return `${LANE_LABELS[run.lane]}, ${modelText(run, true)}, ${run.projectLabel}, ${status}${run.endEstimated ? ', giờ kết thúc ước lượng' : ''}`
       + (modelNote(run) ? `, ${modelNote(run)}` : '')
+      + (run.tokens ? `, ${formatTokens(run.tokens.total)} token, ${tokenBreakdown(run.tokens)}` : '')
       + (run.crossProject ? `, ${crossProjectLeafText(run)}${activeCross}` : '')
       + `, ${Array.from(run.prompt || '').slice(0, 200).join('')}`
       + (run.promptSource ? `, nguồn lời nhắc: ${run.promptSource}` : '')
@@ -125,6 +144,7 @@ function description(node, now = Date.now()) {
   if (node.type === 'more') return `${node.label}, bấm để mở rộng`;
   const action = node.type === 'root' ? 'điều phối' : collapsed.has(node.id) ? 'bấm để mở rộng' : 'bấm để thu gọn';
   return `${node.fullLabel || node.label}, ${node.subtitle || ''}`
+    + (node.counterText ? `, ${node.counterText}` : '')
     + (node.crossCount ? `, ${crossProjectNodeText(node.crossCount)}` : '')
     + (node.unknownReasons ? `, ${node.unknownReasons}` : '')
     + `${node.running ? `, đang ${node.phase}` : ''}, ${action}`;
@@ -276,12 +296,14 @@ function draw(reset = false) {
       const mark = shape('text', { 'text-anchor': 'middle', y: 5, class: 'map-error-mark' });
       const crossMark = shape('path', { class: 'map-cross-mark', 'aria-hidden': 'true' });
       const phaseLabel = shape('text', { 'text-anchor': 'middle', class: 'map-subtitle map-phase' });
+      const counterLabel = shape('text', { 'text-anchor': 'middle', class: 'map-subtitle map-counter' });
+      const elapsedLabel = shape('text', { 'text-anchor': 'middle', class: 'map-subtitle map-elapsed' });
       const badge = shape('g', { class: 'map-running-badge', 'aria-hidden': 'true' });
       badge.append(shape('rect', { x: -58, y: -12, width: 116, height: 24, rx: 12 }),
         shape('circle', { cx: -46, r: 3, class: 'map-badge-dot' }),
         shape('text', { 'text-anchor': 'middle', x: 5, y: 4 }));
-      group.append(title, circle, crossMark, label, subtitle, phaseLabel, mark, badge);
-      item = { group, circle, crossMark, title, label, subtitle, phaseLabel, mark, badge, node };
+      group.append(title, circle, crossMark, label, subtitle, phaseLabel, counterLabel, elapsedLabel, mark, badge);
+      item = { group, circle, crossMark, title, label, subtitle, phaseLabel, counterLabel, elapsedLabel, mark, badge, node };
       group.addEventListener('click', () => activate(item.node));
       group.addEventListener('keydown', event => {
         if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(item.node); }
@@ -291,6 +313,20 @@ function draw(reset = false) {
       nodeElements.set(node.id, item); nodeLayer.append(group);
     }
     item.node = node;
+    const own = node.type === 'root' || node.type === 'lane'
+      ? currentRuns.filter(run => run.lane === (node.type === 'root' ? 'Claude' : node.lane)) : node.runs || [];
+    if (node.type === 'root' || node.type === 'lane') {
+      const counters = rangeCounters(own, now, counterRange);
+      const brief = counters.busyMs >= 3600_000 ? `${Math.floor(counters.busyMs / 3600_000)} giờ`
+        : counters.busyMs >= 60_000 ? `${Math.floor(counters.busyMs / 60_000)} phút` : formatDuration(counters.busyMs);
+      node.counterText = `${brief}` + (counters.tokens ? ` · ${formatTokens(counters.tokens.total)} token` : '');
+      if (node.counterText.length > 31 && counters.tokens) node.counterText = `${formatTokens(counters.tokens.total)} token`;
+      // Chữ vừa vùng đã dự trữ; không đổi bán kính, bố cục hay vị trí nút vì token tăng.
+      item.counterLabel.textContent = node.counterText;
+      item.counterLabel.setAttribute('y', node.type === 'root' ? -24 : 37);
+    }
+    item.runningStart = ['root', 'lane'].includes(node.type)
+      ? Math.min(...own.filter(run => run.running).map(run => run.start)) : Infinity;
     const status = node.run?.running ? 'running' : node.run?.status || '';
     const estimated = node.run?.endEstimated ? ' estimated' : '';
     const working = node.running > 0;
@@ -334,13 +370,28 @@ function draw(reset = false) {
     });
     item.subtitle.setAttribute('y', node.type === 'run' ? node.r + 28 : 23);
     // Nhãn pha nằm ngay dưới dòng phụ đề cuối: nút một dòng giữ y = 40, nút gốc nhiều dòng (model Claude) được đẩy xuống để không đè chữ.
-    item.phaseLabel.setAttribute('y', node.type === 'run' ? node.r + 42 : 23 + 14 * (subtitleLines.length - 1) + 17);
+    const phaseY = node.type === 'run' ? node.r + 42 : node.type === 'lane' ? 54 : 23 + 14 * (subtitleLines.length - 1) + 17;
+    item.phaseLabel.setAttribute('y', phaseY);
+    item.elapsedLabel.setAttribute('y', phaseY + 14);
     item.mark.textContent = status === 'error' ? 'X' : '';
   }
   updateCrossLinks(now);
+  tick(now, true);
   $('mindmap-empty').hidden = layout.count > 0;
   if (!view || (reset && !userAdjustedView)) center();
   if (active) $('run-count').textContent = `${layout.count} lần giao, ${layout.grouped} lần giao đang gộp`;
+}
+// Nhịp chung do app.js gọi; chỉ đổi chữ, không gọi draw, không tính lại bố cục.
+function tick(now, forceAria = false) {
+  if (!active || document.hidden) return;
+  const accessible = forceAria || now - lastTickAria >= 30_000;
+  if (accessible) lastTickAria = now;
+  for (const item of nodeElements.values()) {
+    const elapsed = Math.max(0, now - item.runningStart);
+    const text = Number.isFinite(item.runningStart) ? `Đang làm: ${formatDuration(elapsed)}` : '';
+    item.elapsedLabel.textContent = text;
+    if (accessible) item.group.setAttribute('aria-label', description(item.node, now) + (text ? `, ${text}` : ''));
+  }
 }
 function selectTab() {
   active = location.hash === '#so-do' || location.hash === 'so-do';
@@ -490,6 +541,14 @@ function setMapOnly(enabled, source = 'api', statusText = '') {
       savedScroll = null;
     }
   }
+  const wakeLabel = $('wake-lock-status');
+  if (wakeLabel) {
+    wakeLabel.hidden = !mapOnly;
+    wakeLabel.textContent = `Giữ màn hình sáng: ${wakeLock.state}`;
+    wakeLabel.title = wakeTitles[wakeLock.state];
+  }
+  wakeLock.set(mapOnly);
+  if (mapOnly && wakeLock.state === 'không hỗ trợ') announceMapStatus('Đã vào chế độ chỉ sơ đồ. Giữ màn hình sáng: không hỗ trợ');
 }
 function enterFullscreen() {
   setMapOnly(true, 'api');
@@ -614,9 +673,11 @@ svg.addEventListener('pointermove', event => {
 });
 for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) svg.addEventListener(event, () => { drag = null; });
 window.boardMindmap = {
+  tick,
   setMapOnly,
   isMapOnly: () => mapOnly,
-  update(runs, detail, key, claudeRuns = [], knownClaudeModels = []) {
+  update(runs, detail, key, claudeRuns = [], knownClaudeModels = [], range = {}) {
+    counterRange = range;
     filteredCount = runs.length; claudeModels = knownClaudeModels;
     const ids = new Set(runs.map(run => run.id));
     currentRuns = [...runs, ...claudeRuns.filter(run => !ids.has(run.id))]; showDetails = detail;

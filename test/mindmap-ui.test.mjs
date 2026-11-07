@@ -5,6 +5,8 @@ import vm from 'node:vm';
 import { layoutMindmap } from '../public/mindmap-layout.js';
 import * as modelLabels from '../public/model-labels.js';
 import * as activity from '../public/activity.js';
+import * as counters from '../public/counters.js';
+import { createWakeLock } from '../public/wake-lock.js';
 
 const source = (await readFile(new URL('../public/mindmap.js', import.meta.url), 'utf8')).replace(/^import .*\r?\n/gm, '');
 function board() {
@@ -24,6 +26,7 @@ function board() {
     focus() { this.focused = true; }
   }
   const document = {
+    addEventListener() {},
     createElementNS: () => new Node(),
     getElementById(id) { if (!ids.has(id)) ids.set(id, new Node()); return ids.get(id); },
   };
@@ -31,7 +34,7 @@ function board() {
     addEventListener: (event, handler) => windowEvents.set(event, handler), dispatchEvent() {},
   };
   const location = { hash: '#so-do' };
-  const context = vm.createContext({ ...modelLabels, ...activity, document, window, location, Event: class {}, layoutMindmap, Date: Clock });
+  const context = vm.createContext({ ...modelLabels, ...activity, ...counters, createWakeLock, document, window, location, Event: class {}, layoutMindmap, Date: Clock });
   vm.runInContext(source, context);
   const evaluate = code => vm.runInContext(code, context);
   return { ids, window, windowEvents, location, evaluate, advance(ms) { clock += ms; } };
@@ -40,6 +43,51 @@ const sample = {
   id: 'tổng-hợp', lane: 'Codex', kind: 'giao việc', projectKey: 'dự-án', projectLabel: 'Dự án',
   start: Date.now() - 60_000, end: null, running: true, prompt: 'Lời nhắc tổng hợp', status: 'unknown',
 };
+
+test('Phụ đề làn, gốc Claude và tooltip lá có token đúng khoảng, SSE chỉ đổi chữ và giữ bố cục', () => {
+  const ui = board(), now = ui.evaluate('Date.now()');
+  const tokens = { input: 10, cacheRead: 90, cacheWrite: 0, output: 100, reasoning: 30, total: 200 };
+  const run = { ...sample, start: now - 3_600_000, tokens };
+  const claude = { ...run, id: 'gốc', lane: 'Claude', tokens: { ...tokens, total: 400 } };
+  ui.window.boardMindmap.update([run], () => {}, 'token', [claude], [], { from: now - 600_000, to: now });
+  const leaf = ui.evaluate("nodeElements.get('run:tổng-hợp')"), lane = ui.evaluate("nodeElements.get('lane:Codex')");
+  const root = ui.evaluate("nodeElements.get('root')");
+  assert.match(lane.counterLabel.textContent, /10 phút · 200 token/);
+  assert.match(root.counterLabel.textContent, /10 phút · 400 token/);
+  assert.match(leaf.title.textContent, /200 token.*Vào: 10 token.*Suy luận.*30 token.*Tổng: 200 token/);
+  assert.match(leaf.group.attributes['aria-label'], /200 token/);
+  const all = ui.evaluate('[...nodeElements.values()].map(item => [item.group, item.group.attributes.transform])');
+  const view = ui.ids.get('mindmap').attributes.viewBox;
+  const radius = lane.circle.attributes.r;
+  ui.window.boardMindmap.update([{ ...run, tokens: { ...tokens, total: 52_000_000 } }], () => {}, 'token', [claude]);
+  assert.equal(ui.evaluate("nodeElements.get('run:tổng-hợp')"), leaf);
+  assert.match(lane.counterLabel.textContent, /52,0 triệu token/);
+  for (const [group, position] of all) assert.equal(group.attributes.transform, position);
+  assert.equal(lane.circle.attributes.r, radius);
+  assert.equal(ui.ids.get('mindmap').attributes.viewBox, view);
+});
+
+test('Nhịp sơ đồ chỉ đổi textContent, không dựng hay bố cục; aria đổi thô 30 giây và dừng ở tab ẩn', () => {
+  const ui = board();
+  const run = { ...sample, start: ui.evaluate('Date.now()') - 70_000 };
+  ui.window.boardMindmap.update([run], () => {}, 'sống');
+  const lane = ui.evaluate("nodeElements.get('lane:Codex')"), childRefs = [...lane.group.children];
+  const aria = lane.group.attributes['aria-label'], position = lane.group.attributes.transform;
+  const view = ui.ids.get('mindmap').attributes.viewBox;
+  ui.evaluate("draw = () => { throw new Error('Không được vẽ lại'); }; layoutMindmap = () => { throw new Error('Không được tính bố cục'); };");
+  ui.advance(1000); ui.window.boardMindmap.tick(ui.evaluate('Date.now()'));
+  assert.equal(lane.elapsedLabel.textContent, 'Đang làm: 1 phút 11 giây');
+  assert.equal(lane.group.attributes['aria-label'], aria);
+  assert.deepEqual(lane.group.children, childRefs);
+  assert.equal(lane.group.attributes.transform, position); assert.equal(ui.ids.get('mindmap').attributes.viewBox, view);
+  ui.advance(29_000); ui.window.boardMindmap.tick(ui.evaluate('Date.now()'));
+  assert.notEqual(lane.group.attributes['aria-label'], aria);
+  const text = lane.elapsedLabel.textContent;
+  ui.evaluate('document.hidden = true'); ui.advance(1000); ui.window.boardMindmap.tick(ui.evaluate('Date.now()'));
+  assert.equal(lane.elapsedLabel.textContent, text);
+  ui.evaluate('document.hidden = false; active = false'); ui.advance(1000); ui.window.boardMindmap.tick(ui.evaluate('Date.now()'));
+  assert.equal(lane.elapsedLabel.textContent, text);
+});
 
 test('Cập nhật trực tiếp giữ DOM, viewBox, vị trí và trạng thái thu gọn; bàn phím mở chi tiết', () => {
   const ui = board(), details = [];

@@ -1350,3 +1350,131 @@ html.map-only .details.open dl,
     height:460px;
   }
 }
+
+/* Bộ đếm không dựng lại khi nhịp sống chạy; nhãn làn luôn đi kèm màu. */
+.counters {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:12px 0;
+  min-width:0;
+}
+
+.counter-chip {
+  display:flex;
+  flex-direction:column;
+  flex:1 1 190px;
+  min-width:0;
+  gap:4px;
+  padding:8px 10px;
+  border:1px solid var(--line);
+  border-left:3px solid var(--lane);
+  border-radius:6px;
+  background:var(--surface);
+  font-size:11px;
+  overflow-wrap:anywhere;
+  font-variant-numeric:tabular-nums;
+}
+
+.counter-chip strong {
+  color:var(--text);
+}
+
+.counter-range {
+  color:var(--muted);
+  font-size:10px;
+}
+
+.range-counters {
+  margin:8px 24px;
+}
+
+.card-counter {
+  font-size:10px;
+  margin:6px 0;
+  overflow:hidden;
+  white-space:nowrap;
+  text-overflow:ellipsis;
+  font-variant-numeric:tabular-nums;
+}
+
+.wake-lock-status {
+  font-size:11px;
+  overflow-wrap:anywhere;
+}
+
+#map-counters {
+  display:none;
+}
+
+html.map-only #counters,
+html.map-only #range-counters {
+  display:none;
+}
+
+/* Chừa một dải riêng cho thanh công cụ và chip để chúng không che các nút sơ đồ. */
+html.map-only .map-stage,
+.map-stage:fullscreen {
+  display:flex;
+  flex-direction:column;
+}
+
+html.map-only .mindmap-toolbar,
+.map-stage:fullscreen .mindmap-toolbar {
+  position:relative;
+  top:auto;
+  left:auto;
+  transform:none;
+  margin:12px 170px 0 12px;
+  order:0;
+  flex:none;
+}
+
+html.map-only #map-counters,
+.map-stage:fullscreen #map-counters {
+  display:flex;
+  position:relative;
+  top:auto;
+  left:auto;
+  margin:8px 12px;
+  padding:0;
+  border:0;
+  background:none;
+  order:1;
+  flex:none;
+}
+
+html.map-only #mindmap,
+.map-stage:fullscreen #mindmap {
+  height:0;
+  min-height:0;
+  flex:1 1 0;
+  order:2;
+}
+
+html.map-only .counter-chip,
+.map-stage:fullscreen .counter-chip {
+  flex-basis:150px;
+  padding:6px 8px;
+  gap:3px;
+}
+
+@media(max-width:600px) {
+  .range-counters {
+    margin:8px 14px;
+  }
+  html.map-only .mindmap-toolbar,
+  .map-stage:fullscreen .mindmap-toolbar {
+    margin-right:12px;
+  }
+  html.map-only .connection,
+  .map-stage:fullscreen .connection {
+    top:auto;
+    bottom:12px;
+  }
+  html.map-only .counter-chip,
+  .map-stage:fullscreen .counter-chip {
+    flex-basis:calc(50% - 10px);
+    font-size:10px;
+  }
+}

@@ -19,8 +19,11 @@ export function shortenLabel(label, width = 126) {
 export function labelRadius(node) {
   const lines = node.subtitleLines || [node.subtitle || ''];
   const labelWidth = Array.from(node.label || '').length * (node.type === 'run' ? 7 : 8);
-  const subtitleWidth = Math.max(0, ...lines.map(line => Array.from(line).length * 6));
-  const bottom = node.type === 'run' ? 18 + 42 : 23 + Math.max(0, lines.length - 1) * 14;
+  const hasCounters = node.type === 'root' || node.type === 'lane';
+  // Dự trữ tối đa 31 ký tự cho dòng đếm và một dòng thời lượng; số liệu tăng không dời nút qua SSE.
+  const subtitleWidth = Math.max(hasCounters ? 186 : 0, ...lines.map(line => Array.from(line).length * 6));
+  const bottom = node.type === 'run' ? 18 + 42 : node.type === 'lane' ? 68
+    : 23 + Math.max(0, lines.length - 1) * 14 + (hasCounters ? 31 : 0);
   return Math.max(node.type === 'lane' ? node.r * 1.6 + 6 : node.type === 'run' ? 18 : node.r,
     Math.hypot(Math.max(labelWidth, subtitleWidth) / 2 + 4, bottom + 8));
 }

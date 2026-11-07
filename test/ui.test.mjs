@@ -5,13 +5,23 @@ import vm from 'node:vm';
 import * as modelLabels from '../public/model-labels.js';
 import * as crossProject from '../public/model-labels.js';
 import * as activity from '../public/activity.js';
+import * as counters from '../public/counters.js';
+import { createWakeLock } from '../public/wake-lock.js';
 
 const script = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8')).replace(/^import .*\r?\n/gm, '');
 const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
 
 // DOM tối thiểu để kiểm tra hình học và tương tác, không mở trình duyệt.
-function board(shellWidth = 1198, labelWidth = 100) {
+function board(shellWidth = 1198, labelWidth = 100, observe = false) {
   const ids = new Map();
+  const documentEvents = new Map(), stateEvents = new Map(), timers = new Map();
+  let clock = Date.now(), sequence = 0;
+  let intersect;
+  class Observer {
+    constructor(callback) { intersect = callback; }
+    observe() {}
+  }
+  class Clock extends Date { static now() { return clock; } }
   class Node {
     constructor() {
       this.children = []; this.style = { setProperty() {} }; this.dataset = {};
@@ -32,6 +42,7 @@ function board(shellWidth = 1198, labelWidth = 100) {
     remove() { this.parent.children = this.parent.children.filter(node => node !== this); }
     setAttribute(name, value) { this.attributes[name] = value; }
     addEventListener(name, callback) { this.listeners[name] = callback; }
+    checkVisibility() { return !this.hidden && (!this.parent || this.parent.checkVisibility()); }
     querySelectorAll(selector) {
       return this.children.flatMap(node => [
         ...(node.classList.contains(selector.slice(1)) ? [node] : []), ...node.querySelectorAll(selector),
@@ -50,18 +61,130 @@ function board(shellWidth = 1198, labelWidth = 100) {
     const node = new Node(); node.dataset.hours = String(hours); return node;
   });
   const document = {
-    documentElement: new Node(), addEventListener() {},
+    documentElement: new Node(), hidden: false,
+    addEventListener(name, fn) {
+      if (!documentEvents.has(name)) documentEvents.set(name, []);
+      documentEvents.get(name).push(fn);
+    },
     getElementById: id => ids.get(id), createElement: () => new Node(),
     querySelectorAll: selector => selector === '[data-hours]' ? rangeButtons : ids.get('chart').querySelectorAll(selector),
     activeElement: null,
   };
-  const context = vm.createContext({ ...modelLabels, ...activity, document, Intl, Date,
-    window: { addEventListener() {} }, EventSource: class { addEventListener() {} },
-    fetch: () => new Promise(() => {}), setInterval() {},
+  const context = vm.createContext({ ...modelLabels, ...activity, ...counters, createWakeLock, document, Intl, Date: Clock,
+    IntersectionObserver: observe ? Observer : undefined,
+    window: { addEventListener() {} }, EventSource: class { addEventListener(name, fn) { stateEvents.set(name, fn); } },
+    fetch: () => new Promise(() => {}),
+    setInterval(fn, ms) { assert.equal(ms, 1000); timers.set(++sequence, fn); return sequence; },
+    clearInterval(id) { timers.delete(id); },
   });
   vm.runInContext(script, context);
-  return { ids, context, evaluate: code => vm.runInContext(code, context) };
+  return { ids, context, timers, stateEvents, evaluate: code => vm.runInContext(code, context),
+    intersection(id, visible) { intersect([{ target: ids.get(id), isIntersecting: visible }]); },
+    advance(ms) { clock += ms; for (const fn of timers.values()) fn(); },
+    visibility(hidden) { document.hidden = hidden; for (const fn of documentEvents.get('visibilitychange') || []) fn(); } };
 }
+
+const counterState = () => ({ revision: 1, lanes: [
+  { lane: 'Codex', state: 'Đang chạy', start: Date.now() - 60_000, running: true,
+    busyMs24h: 60_000, tokensRunning: 1500,
+    tokens24h: { input: 12, cacheRead: 1400, cacheWrite: 0, output: 88, reasoning: 30, total: 1500, runsWithTokens: 2, runsTotal: 3 } },
+  { lane: 'Argon', state: 'Rảnh', busyMs24h: 3000, tokens24h: { total: 0, runsWithTokens: 0, runsTotal: 5 } },
+], scan: { warnings: [] } });
+
+test('Dải thường, chip chỉ sơ đồ và thẻ hiện token, độ phủ, lý do agy cùng đơn vị thời gian', () => {
+  const ui = board();
+  ui.stateEvents.get('state')({ data: JSON.stringify(counterState()) });
+  for (const id of ['counters', 'map-counters']) {
+    const chips = ui.ids.get(id).children;
+    assert.equal(chips.length, 4);
+    assert.equal(chips[1].children[0].textContent, 'Codex');
+    assert.match(chips[1].children[1].textContent, /24 giờ: chạy 1 phút 0 giây · 1.500 token · đang chạy: 1.500 token/);
+    assert.match(chips[1].title, /Suy luận.*30 token.*Tổng: 1.500 token.*2\/3 lần có số liệu/);
+    assert.match(chips[3].children[1].textContent, /chưa đọc được token/);
+    assert.doesNotMatch(chips[3].children[1].textContent, /0 token/);
+    assert.match(chips[3].title, /agy không ghi token ở dạng đọc được.*0\/5 lần có số liệu/);
+  }
+  assert.match(ui.evaluate("cardElements.get('Codex').counter.textContent"), /Token 24 giờ: 1.500 · chạy 1 phút 0 giây/);
+  assert.match(ui.evaluate("cardElements.get('Argon').counter.textContent"), /Token: chưa đọc được · chạy 3 giây/);
+});
+
+test('Bộ đếm theo khoảng theo bộ lọc, hợp thời gian chồng nhau, tách biệt thẻ 24 giờ', () => {
+  const ui = board();
+  ui.stateEvents.get('state')({ data: JSON.stringify(counterState()) });
+  ui.evaluate(`hours = 168; runs = [
+    { id: 'một', lane: 'Codex', start: end - 120000, end: end - 60000, tokens: { total: 100 } },
+    { id: 'hai', lane: 'Codex', start: end - 90000, end: end - 30000, tokens: { total: 200 } },
+    { id: 'ba', lane: 'Argon', start: end - 10000, end: end - 5000 } ]; renderChart();`);
+  const chip = ui.ids.get('range-counters').children[1];
+  assert.equal(chip.children[1].textContent, 'trong 7 ngày: chạy 1 phút 30 giây · 300 token');
+  assert.match(ui.ids.get('map-counters').children[1].children[2].textContent, /trong 7 ngày.*300 token/);
+  assert.match(ui.evaluate("cardElements.get('Codex').counter.textContent"), /1.500/);
+  ui.ids.get('lane-filter').value = 'Argon'; ui.evaluate('renderChart()');
+  assert.equal(chip.hidden, true);
+  assert.equal(ui.ids.get('range-counters').children[3].hidden, false);
+  ui.evaluate('hours = 720; renderChart()');
+  assert.match(ui.ids.get('range-counters').children[3].children[1].textContent, /trong 30 ngày/);
+});
+
+test('Panel chi tiết có sáu thành phần token, thanh có tổng token ở title và aria-label', () => {
+  const ui = board();
+  ui.evaluate(`runs = [{ id: 'token', lane: 'Codex', kind: 'giao việc', start: end - 100000, end: end - 10000,
+    tokens: { input: 10, cacheRead: 20, cacheWrite: 30, output: 40, reasoning: 15, total: 100 } }];
+    renderChart(); showDetails(runs[0]);`);
+  const bar = ui.ids.get('chart').querySelectorAll('.run-bar')[0];
+  assert.match(bar.title, /100 token/); assert.match(bar.attributes['aria-label'], /100 token/);
+  const rows = ui.ids.get('detail-fields').children;
+  const row = rows.find(item => item.children[0].textContent === 'Token');
+  assert.match(row.children[1].textContent, /Vào: 10 token.*Cache đọc: 20 token.*Cache ghi: 30 token.*Ra: 40 token.*15 token.*Tổng: 100 token/);
+  assert.ok(rows.find(item => item.children[0].textContent === 'Thời lượng'));
+  ui.evaluate("showDetails({ ...runs[0], lane: 'Opus', tokens: null })");
+  assert.match(ui.ids.get('detail-fields').children.find(item => item.children[0].textContent === 'Token').children[1].textContent,
+    /Chưa đọc được token.*agy không ghi token ở dạng đọc được/);
+});
+
+test('Một nhịp sống chỉ đổi chữ, giữ DOM, không dựng chart, không cập nhật aria mỗi giây và đặt lại mốc SSE', () => {
+  const ui = board();
+  ui.stateEvents.get('state')({ data: JSON.stringify(counterState()) });
+  const chip = ui.ids.get('counters').children[1], value = chip.children[1], card = ui.evaluate("cardElements.get('Codex').counter");
+  const chartChildren = [...ui.ids.get('chart').children], aria = chip.attributes['aria-label'];
+  assert.equal(ui.timers.size, 1);
+  ui.evaluate("renderChart = () => { throw new Error('Không được dựng lại trong nhịp sống'); };");
+  ui.advance(1000);
+  assert.equal(chip.children[1], value); assert.equal(ui.evaluate("cardElements.get('Codex').counter"), card);
+  assert.deepEqual(ui.ids.get('chart').children, chartChildren);
+  assert.match(value.textContent, /1 phút 1 giây/);
+  assert.equal(chip.attributes['aria-label'], aria);
+  ui.advance(29_000); assert.notEqual(chip.attributes['aria-label'], aria);
+  const next = counterState(); next.lanes[0].busyMs24h = 90_000;
+  ui.stateEvents.get('state')({ data: JSON.stringify(next) });
+  ui.advance(1000); assert.match(value.textContent, /1 phút 31 giây/);
+  assert.doesNotMatch(value.textContent, /2 phút/);
+});
+
+test('Nhịp sống dừng khi tab ẩn hoặc không còn bộ đếm hiển thị, khởi động lại chỉ một nhịp', () => {
+  const ui = board(); ui.stateEvents.get('state')({ data: JSON.stringify(counterState()) });
+  const value = ui.ids.get('counters').children[1].children[1], previous = value.textContent;
+  ui.visibility(true); assert.equal(ui.timers.size, 0);
+  ui.advance(5000); assert.equal(value.textContent, previous);
+  ui.visibility(false); assert.equal(ui.timers.size, 1);
+  assert.match(value.textContent, /1 phút 5 giây/);
+  for (const id of ['counters', 'map-counters', 'cards', 'mindmap']) ui.ids.get(id).hidden = true;
+  ui.advance(1000); assert.equal(ui.timers.size, 0);
+  ui.ids.get('counters').hidden = false;
+  ui.evaluate('syncLiveTimer(); syncLiveTimer();'); assert.equal(ui.timers.size, 1);
+});
+
+test('IntersectionObserver dừng nhịp khi cuộn khỏi mọi bộ đếm và nối lại khi chip chỉ sơ đồ hiện', () => {
+  const ui = board(1198, 100, true);
+  assert.equal(ui.timers.size, 0);
+  ui.intersection('counters', true); assert.equal(ui.timers.size, 1);
+  ui.intersection('cards', true); assert.equal(ui.timers.size, 1);
+  ui.intersection('counters', false); assert.equal(ui.timers.size, 1);
+  ui.intersection('cards', false); assert.equal(ui.timers.size, 0);
+  ui.intersection('map-counters', true); assert.equal(ui.timers.size, 1);
+  ui.visibility(true); assert.equal(ui.timers.size, 0);
+  ui.visibility(false); assert.equal(ui.timers.size, 1);
+});
 
 test('Trục giờ không chồng nhãn ở cả bốn khoảng, tại khung 1280 và 390 px', () => {
   for (const width of [1198, 360]) for (const labelWidth of [70, 100, 130]) {

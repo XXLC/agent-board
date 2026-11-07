@@ -5,12 +5,14 @@ import vm from 'node:vm';
 import { layoutMindmap, isBrowserFullscreen } from '../public/mindmap-layout.js';
 import * as modelLabels from '../public/model-labels.js';
 import * as activity from '../public/activity.js';
+import * as counters from '../public/counters.js';
+import { createWakeLock } from '../public/wake-lock.js';
 
 const mindmapSource = (await readFile(new URL('../public/mindmap.js', import.meta.url), 'utf8')).replace(/^import .*\r?\n/gm, '');
 const htmlSource = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
 const cssSource = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
 
-function createHarness(initialHash = '#so-do') {
+function createHarness(initialHash = '#so-do', navigator) {
   let clock = 1_793_577_600_000;
   class Clock extends Date { static now() { return clock; } }
   const ids = new Map(), windowEvents = new Map(), docEvents = new Map();
@@ -64,6 +66,7 @@ function createHarness(initialHash = '#so-do') {
   for (const [, id] of htmlSource.matchAll(/id="([^"]+)"/g)) ids.set(id, new Node());
   if (ids.get('clear-detail')) ids.get('clear-detail').hidden = true;
   if (ids.get('map-legend-toggle')) ids.get('map-legend-toggle').hidden = true;
+  if (ids.get('wake-lock-status')) ids.get('wake-lock-status').hidden = true;
 
   let mediaMatches = false;
   const mediaListeners = [];
@@ -89,6 +92,7 @@ function createHarness(initialHash = '#so-do') {
   };
 
   const document = {
+    hidden: false,
     documentElement,
     fullscreenElement: null,
     activeElement: null,
@@ -118,7 +122,7 @@ function createHarness(initialHash = '#so-do') {
   };
   const location = { hash: initialHash };
   const context = vm.createContext({
-    ...modelLabels, ...activity, document, window, location,
+    ...modelLabels, ...activity, ...counters, createWakeLock, navigator, document, window, location,
     Event: class {}, layoutMindmap, Date: Clock,
   });
   vm.runInContext(mindmapSource, context);
@@ -139,6 +143,46 @@ const sampleRun = {
   id: 'run-1', lane: 'Codex', kind: 'giao việc', projectKey: 'du-an-a', projectLabel: 'DuAn_A',
   start: 1_793_577_540_000, end: null, running: true, prompt: 'Lời nhắc tổng hợp', status: 'unknown',
 };
+
+test('Chỉ chế độ chỉ sơ đồ mới xin Wake Lock; F11, nút và toàn màn hình trình duyệt cùng nhả khi thoát', async () => {
+  let requests = 0, releases = 0;
+  const navigator = { wakeLock: { request() {
+    requests++;
+    return Promise.resolve({ addEventListener() {}, release() { releases++; return Promise.resolve(); } });
+  } } };
+  const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
+  const ui = createHarness('#so-do', navigator);
+  ui.window.boardMindmap.update([sampleRun], () => {}, 'khóa');
+  await settle(); assert.equal(requests, 0);
+  assert.equal(ui.ids.get('wake-lock-status').hidden, true);
+  ui.docEvents.get('keydown')({ key: 'F11', preventDefault() {} });
+  await settle(); assert.equal(requests, 1);
+  assert.equal(ui.ids.get('wake-lock-status').textContent, 'Giữ màn hình sáng: bật');
+  assert.equal(ui.ids.get('wake-lock-status').hidden, false);
+  assert.match(ui.ids.get('map-status').textContent, /Giữ màn hình sáng: bật/);
+  ui.docEvents.get('keydown')({ key: 'F11', preventDefault() {} });
+  await settle(); assert.equal(releases, 1); assert.equal(ui.ids.get('wake-lock-status').hidden, true);
+  ui.ids.get('map-fullscreen').events.click(); await settle(); assert.equal(requests, 2);
+  ui.ids.get('map-fullscreen').events.click(); await settle(); assert.equal(releases, 2);
+  ui.setMediaFullscreen(true); await settle(); assert.equal(requests, 3);
+  ui.setMediaFullscreen(false); await settle(); assert.equal(releases, 3);
+});
+
+test('Wake Lock không hỗ trợ và lỗi chính sách không làm hỏng chế độ chỉ sơ đồ', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const ui = createHarness('#so-do');
+  ui.window.boardMindmap.setMapOnly(true);
+  assert.equal(ui.ids.get('wake-lock-status').textContent, 'Giữ màn hình sáng: không hỗ trợ');
+  assert.equal(ui.documentElement.classList.contains('map-only'), true);
+  ui.window.boardMindmap.setMapOnly(false);
+  const blocked = createHarness('#so-do', { wakeLock: { request() { return Promise.reject(new Error('Chính sách chặn')); } } });
+  blocked.window.boardMindmap.setMapOnly(true);
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  assert.equal(blocked.ids.get('wake-lock-status').textContent, 'Giữ màn hình sáng: bị chặn');
+  assert.match(blocked.ids.get('wake-lock-status').title, /tối đa ba lần/);
+  assert.equal(blocked.documentElement.classList.contains('map-only'), true);
+  blocked.window.boardMindmap.setMapOnly(false);
+});
 
 test('isBrowserFullscreen kiểm tra kích thước khớp, lệch 2 px, cửa sổ nhỏ hơn và display-mode fullscreen', () => {
   assert.equal(isBrowserFullscreen, modelLabels.isBrowserFullscreen);

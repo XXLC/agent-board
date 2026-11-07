@@ -2,6 +2,7 @@
 import { LANE_LABELS, countModels, latestPerFamily, modelLabel, modelNote, modelPrefix, modelSummary, modelText } from './model-labels.js';
 import { CROSS_FILTER_OPTIONS, crossProjectBarText, crossProjectCardText, crossProjectCardTitle, crossProjectDetailText, crossProjectFooterText, matchesCrossFilter } from './model-labels.js';
 import { activityPhase, activityText, watchActivityVisibility } from './activity.js';
+import { formatDuration, formatTokens, tokenBreakdown, coverageText, unreadTokenReason, laneCounters, rangeCounters } from './counters.js';
 const $ = id => document.getElementById(id);
 watchActivityVisibility(document);
 const lanes = Object.keys(LANE_LABELS);
@@ -12,13 +13,9 @@ let hours = 6, end = Date.now(), following = true, zoom = 1, runs = [], state, s
 const claudeLane = () => state?.lanes?.find(lane => lane.lane === 'Claude');
 let requestNumber = 0, fetchQueued = false, fetching = false, lastRangeKey = '';
 const cardElements = new Map();
+let receivedAt = Date.now();
 function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
-function duration(ms) {
-  const seconds = Math.max(0, Math.floor(ms / 1000));
-  return seconds < 60 ? `${seconds} giây` : seconds < 3600
-    ? `${Math.floor(seconds / 60)} phút ${seconds % 60} giây`
-    : `${Math.floor(seconds / 3600)} giờ ${Math.floor(seconds % 3600 / 60)} phút`;
-}
+const duration = formatDuration;
 function format(value) { return value == null ? 'Chưa rõ' : local.format(value); }
 for (const lane of lanes) {
   const option = element('option', '', LANE_LABELS[lane]); option.value = lane; $('lane-filter').append(option);
@@ -39,8 +36,71 @@ for (const lane of lanes) {
   badge.append(badgeText, badgePhase); head.append(title, badge);
   const model = element('p', 'model'), prompt = element('p', 'task', 'Đang đọc nguồn dữ liệu'), project = element('p', 'project');
   const modelSummary = element('p', 'model-summary'), config = element('p', 'model-summary');
-  const foot = element('div', 'card-foot'), elapsed = element('span'), count = element('span'); foot.append(elapsed, count); card.append(head, model, modelSummary, config, prompt, project, foot); $('cards').append(card);
-  cardElements.set(lane, { card, badge, badgeText, badgePhase, model, modelSummary, config, prompt, project, elapsed, count });
+  const counter = element('p', 'card-counter');
+  const foot = element('div', 'card-foot'), elapsed = element('span'), count = element('span');
+  foot.append(elapsed, count); card.append(head, model, modelSummary, config, prompt, project, counter, foot); $('cards').append(card);
+  cardElements.set(lane, { card, badge, badgeText, badgePhase, model, modelSummary, config, prompt, project, elapsed, count, counter });
+}
+const counterElements = new Map();
+for (const lane of lanes) {
+  const chips = [];
+  for (const id of ['counters', 'map-counters', 'range-counters']) {
+    const host = $(id); if (!host) continue;
+    const chip = element('div', 'counter-chip'); chip.style.setProperty('--lane', colors[lane]);
+    chip.dataset.lane = lane;
+    const label = element('strong', '', LANE_LABELS[lane]), value = element('span'), range = element('span', 'counter-range');
+    chip.append(label, value);
+    if (id === 'map-counters') chip.append(range);
+    host.append(chip); chips.push({ id, chip, value, range });
+  }
+  counterElements.set(lane, chips);
+}
+let lastCounterAria = -Infinity;
+const counterShown = node => !node.hidden && (typeof node.checkVisibility !== 'function' || node.checkVisibility());
+function renderCounters(now = Date.now(), live = false) {
+  if (!state) return;
+  const accessible = !live || now - lastCounterAria >= 30_000;
+  if (accessible) lastCounterAria = now;
+  for (const lane of state.lanes) {
+    const data = laneCounters(lane, now, receivedAt);
+    const text = `24 giờ: chạy ${duration(data.busyMs)} · ${data.tokenText}`
+      + (data.runningTokens !== null ? ` · đang chạy: ${formatTokens(data.runningTokens)} token` : '');
+    const title = `${data.tokens ? tokenBreakdown(data.tokens) : data.reason} · ${data.coverage}`;
+    for (const item of counterElements.get(lane.lane) || []) {
+      if (item.id === 'range-counters') continue;
+      if (live && !counterShown(item.chip)) continue;
+      item.value.textContent = text;
+      if (!live) item.chip.title = title;
+      if (accessible) item.chip.setAttribute('aria-label', `${LANE_LABELS[lane.lane]} · ${text} · ${data.coverage}`
+        + (item.id === 'map-counters' ? ` · ${item.range.textContent}` : ''));
+    }
+    const card = cardElements.get(lane.lane);
+    if (card && (!live || counterShown(card.card))) {
+      card.counter.textContent = (data.tokens ? `Token 24 giờ: ${formatTokens(data.tokens.total)}` : 'Token: chưa đọc được')
+        + ` · chạy ${duration(data.busyMs)}`;
+      if (!live) card.counter.title = title;
+      if (lane.running && lane.start) card.elapsed.textContent = activityPhase(lane, now) === 'giao'
+        ? `Vừa giao ${duration(now - lane.start)} trước` : `Đang làm: ${duration(now - lane.start)}`;
+    }
+  }
+}
+function renderRangeCounters(filtered) {
+  const label = hours === 168 ? 'trong 7 ngày' : hours === 720 ? 'trong 30 ngày'
+    : `trong ${Number(hours.toFixed(2)).toLocaleString('vi-VN')} giờ`;
+  for (const lane of lanes) {
+    const data = rangeCounters(filtered.filter(run => run.lane === lane), Date.now(), { from: end - hours * 3600_000, to: end });
+    const text = `${label}: chạy ${duration(data.busyMs)} · `
+      + (data.tokens ? `${formatTokens(data.tokens.total)} token` : 'chưa đọc được token');
+    const title = `${data.tokens ? tokenBreakdown(data.tokens) : unreadTokenReason(lane)} · ${coverageText(data)}`
+      + ' · Token của toàn bộ lần chạy hiển thị; thời gian cắt theo khung nhìn';
+    for (const item of counterElements.get(lane) || []) {
+      if (item.id === 'range-counters') {
+        item.value.textContent = text; item.chip.title = title;
+        item.chip.hidden = Boolean($('lane-filter').value && $('lane-filter').value !== lane);
+      }
+      if (item.id === 'map-counters') { item.range.textContent = text; item.range.title = title; }
+    }
+  }
 }
 function renderCards() {
   if (!state) return;
@@ -72,6 +132,7 @@ function renderCards() {
       : `Lần gần nhất: ${elapsed}` : 'Chưa có hoạt động';
     card.count.textContent = lane.lane === 'Claude' ? `${lane.activity24h} đoạn / 24 giờ` : `${lane.count24h} lần giao / 24 giờ`;
   }
+  renderCounters();
 }
 function renderState() {
   renderCards();
@@ -174,6 +235,7 @@ function showDetails(run, pin = false) {
     ['Bắt đầu', format(run.start)], ['Kết thúc', run.running ? 'Đang chạy' : format(run.end)],
     ['Trạng thái', run.running ? activityText(run) : names[run.status] || 'chưa rõ'],
     ['Thời lượng', duration((run.end ?? Date.now()) - run.start)], ['Kết quả', run.running ? 'chưa rõ · đang chạy' : names[run.status]],
+    ['Token', run.tokens ? tokenBreakdown(run.tokens) : `Chưa đọc được token · ${unreadTokenReason(run.lane)}`, true],
     ['Dự án', run.unknownReason ? `không rõ vì ${run.unknownReason}` : (run.projectLabel || 'Không rõ dự án') + (run.outsideClaude ? ' (ngoài Claude)' : ''), true],
     ...(run.crossProject ? [['Giao chéo dự án', crossProjectDetailText(run), true]] : []),
     ['Thư mục dự án', run.projectPath || 'Chưa rõ', true], ['Mã phiên nguồn', run.sourceSession, true],
@@ -274,6 +336,7 @@ function renderChart() {
       bar.classList.toggle('continued', run.start < start);
       bar.style.left = `${left / areaWidth * 100}%`; bar.style.width = `${Math.max(0, visualEnd - left) / areaWidth * 100}%`; bar.style.top = `${16 + row * 30}px`;
       bar.dataset.id = run.id; bar.title = `${LANE_LABELS[run.lane]} · ${modelText(run, true)} · ${run.prompt || run.kind}`
+        + (run.tokens ? ` · ${formatTokens(run.tokens.total)} token` : '')
         + (modelNote(run) ? ` · ${modelNote(run)}` : '')
         + (run.crossProject ? ` · ${crossProjectBarText(run)}` : '');
       if (run.start < start) bar.title += ' · Tiếp tục từ trước khung nhìn';
@@ -281,6 +344,7 @@ function renderChart() {
       const statusText = run.running ? activityText(run) : run.status === 'error' ? 'lỗi'
         : run.status === 'unknown' ? 'chưa rõ' : run.status;
       bar.setAttribute('aria-label', `${LANE_LABELS[run.lane]}, ${modelText(run)}, ${run.kind}, ${format(run.start)}, ${statusText}, ${run.prompt}`
+        + (run.tokens ? `, ${formatTokens(run.tokens.total)} token` : '')
         + (run.crossProject ? `, ${crossProjectBarText(run)}` : '')
         + (run.start < start ? ', tiếp tục từ trước khung nhìn' : '')
         + (run.endEstimated ? ', giờ kết thúc ước lượng' : ''));
@@ -304,7 +368,9 @@ function renderChart() {
     && (!$('model-filter').value || modelLabel(r.model).name === $('model-filter').value)
     && matchesCrossFilter(r, crossValue));
   const scopeKey = `${hours}:${$('lane-filter').value}:${$('project-filter').value}:${$('model-filter').value}${crossValue ? `:${crossValue}` : ''}`;
-  window.boardMindmap?.update(filtered, showDetails, scopeKey, claudeRuns, latestPerFamily(Object.keys(claudeLane()?.models7d || {})));
+  renderRangeCounters(filtered);
+  window.boardMindmap?.update(filtered, showDetails, scopeKey, claudeRuns, latestPerFamily(Object.keys(claudeLane()?.models7d || {})),
+    { from: start, to: end });
 }
 for (const button of document.querySelectorAll('[data-hours]')) button.addEventListener('click', () => {
   hours = Number(button.dataset.hours); zoom = 1;
@@ -355,16 +421,45 @@ window.addEventListener('resize', renderChart);
 window.addEventListener('mindmap-ready', renderChart);
 const events = new EventSource('/events');
 events.addEventListener('state', event => {
-  state = JSON.parse(event.data); $('connection').textContent = 'Đã kết nối trực tiếp'; renderState();
+  state = JSON.parse(event.data); receivedAt = Date.now(); $('connection').textContent = 'Đã kết nối trực tiếp'; renderState();
   const key = `${state.revision}:${hours}:${end}`;
   if (key !== lastRangeKey) { lastRangeKey = key; void loadRuns(); }
 });
 events.addEventListener('error', () => { $('connection').textContent = 'Đang kết nối lại'; });
-fetch('/api/state').then(response => response.json()).then(data => { state = data; renderState(); }).catch(() => { $('connection').textContent = 'Chưa kết nối được'; });
-setInterval(() => {
+fetch('/api/state').then(response => response.json()).then(data => {
+  if (!state) { state = data; receivedAt = Date.now(); renderState(); }
+}).catch(() => { $('connection').textContent = 'Chưa kết nối được'; });
+let liveTimer = null;
+const visibleCounters = new Set();
+const observedCounters = ['counters', 'map-counters', 'cards', 'mindmap'].map($).filter(Boolean);
+const observer = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => {
+  for (const entry of entries) {
+    if (entry.isIntersecting) visibleCounters.add(entry.target); else visibleCounters.delete(entry.target);
+  }
+  syncLiveTimer();
+}) : null;
+function countersVisible() {
+  if (document.hidden) return false;
+  if (observer) return visibleCounters.size > 0;
+  return observedCounters.some(node => !node.hidden && (typeof node.checkVisibility !== 'function' || node.checkVisibility()));
+}
+function tickCounters() {
+  if (!countersVisible()) { syncLiveTimer(); return; }
+  const now = Date.now();
   $('clock').textContent = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(Date.now());
-  renderCards();
-  if (following) end = Date.now();
-  if (!document.hidden) renderChart();
-}, 1000);
+  renderCounters(now, true);
+  window.boardMindmap?.tick(now);
+  if (following) end = now;
+}
+function syncLiveTimer() {
+  if (countersVisible()) {
+    if (liveTimer === null) liveTimer = setInterval(tickCounters, 1000);
+  } else if (liveTimer !== null) { clearInterval(liveTimer); liveTimer = null; }
+}
+document.addEventListener('visibilitychange', () => {
+  syncLiveTimer();
+  if (!document.hidden) { tickCounters(); if (following) void loadRuns(); }
+});
+for (const node of observedCounters) observer?.observe(node);
+syncLiveTimer();
 renderChart(); void loadRuns();

@@ -12,6 +12,8 @@ const assets = new Map([
   ['/model-labels.js', ['public/model-labels.js', 'text/javascript; charset=utf-8']],
   ['/mindmap.js', ['public/mindmap.js', 'text/javascript; charset=utf-8']],
   ['/mindmap-layout.js', ['public/mindmap-layout.js', 'text/javascript; charset=utf-8']],
+  ['/wake-lock.js', ['public/wake-lock.js', 'text/javascript; charset=utf-8']],
+  ['/counters.js', ['public/counters.js', 'text/javascript; charset=utf-8']],
   ['/styles.css', ['public/styles.css', 'text/css; charset=utf-8']],
 ]);
 export function createBoardServer(scanner, port = 8090) {

@@ -16,6 +16,7 @@
       <div class="connection"><span id="connection">Đang kết nối</span><time id="clock"></time><span>Giờ Việt Nam · UTC+7</span></div>
     </header>
     <section aria-label="Trạng thái trực tiếp" id="cards" class="cards"></section>
+    <section id="counters" class="counters" aria-label="Bộ đếm trong 24 giờ"></section>
     <section id="scan-progress" class="scan-progress" role="status"><span id="scan-label">Đang quét lần đầu</span><progress id="progress" max="100" value="0"></progress></section>
     <section class="timeline-section" aria-labelledby="timeline-title">
       <div class="section-heading"><div><p class="eyebrow">LỊCH SỬ HOẠT ĐỘNG</p><h2 id="timeline-title">Dòng thời gian</h2></div><p id="run-count" class="muted" aria-live="polite">Đang nạp dữ liệu</p></div>
@@ -31,6 +32,7 @@
         <label>Giao chéo<select id="cross-filter"><option value="">Tất cả</option><option value="cross">Chỉ giao chéo</option><option value="same">Không giao chéo</option></select></label>
       </div>
       <p id="project-reasons" class="muted" role="status"></p>
+      <div id="range-counters" class="counters range-counters" aria-label="Bộ đếm theo khoảng và bộ lọc đang chọn"></div>
       <div class="chart-toolbar"><span id="range-label"></span><div class="navigation"><button id="previous" aria-label="Lùi khoảng thời gian">Lùi</button><button id="now">Hiện tại</button><button id="next" aria-label="Tiến khoảng thời gian">Tiến</button><button id="zoom-out" aria-label="Thu nhỏ">Thu nhỏ</button><button id="zoom-in" aria-label="Phóng to">Phóng to</button><button id="focus-activity">Phóng to vùng hoạt động</button></div></div>
       <div id="timeline-view" role="tabpanel" aria-labelledby="tab-timeline">
       <div class="chart-shell" id="chart-shell" tabindex="0" role="region" aria-label="Biểu đồ hoạt động, cuộn ngang hoặc kéo vùng trống để xem"><div id="chart" class="chart"></div></div>
@@ -46,6 +48,7 @@
             <button id="map-reorder">Sắp xếp lại</button>
             <button id="map-fullscreen" type="button" aria-pressed="false" title="Toàn màn hình chỉ sơ đồ (F11)">Toàn màn hình</button>
             <button id="map-legend-toggle" type="button" aria-pressed="false" aria-controls="mindmap-legend" hidden>Chú giải</button>
+            <span id="wake-lock-status" class="wake-lock-status" hidden></span>
             <span class="muted">Kéo nền để di chuyển. Bấm làn hoặc dự án để thu gọn, mở rộng. Phím F11: toàn màn hình.</span>
           </div>
           <p id="map-status" class="map-status sr-only" role="status" aria-live="polite"></p>
