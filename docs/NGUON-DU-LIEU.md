@@ -57,7 +57,9 @@ Chỉ chọn các cột `trajectory_meta.trajectory_id`, `gen_metadata.data`, `s
 - Còn lại là "Không rõ dự án", luôn kèm `unknownReason` (ví dụ "agy: hội thoại không có thư mục làm việc đọc được", "Codex: chạy ở thư mục tạm không rõ phiên Claude", "cwd không khớp thư mục nào").
 - Nhãn lấy tên thư mục cuối; trùng thì thêm tên thư mục cha, vẫn trùng thì thêm slug.
 
-Mỗi run và mỗi làn có `projectKey`, `projectLabel`, `projectPath`. Khi agy ghép với lệnh Claude, thư mục làm việc của agy khớp dự án của lệnh ở 161 trên 214 cặp, 17 là thư mục tạm mang slug đúng dự án, 34 làm việc ở dự án khác (giao việc chéo hoặc ghép nhầm, chưa phân biệt được), 2 không đối chiếu được.
+Mỗi run và mỗi làn có `projectKey`, `projectLabel`, `projectPath`. Khi agy ghép với lệnh Claude, thư mục làm việc của agy khớp dự án của lệnh ở 161 trên 214 cặp, 17 là thư mục tạm mang slug đúng dự án, 34 làm việc ở thư mục của dự án khác, 2 không đối chiếu được.
+
+**34 trường hợp làm việc ở dự án khác là giao việc chéo dự án, không phải ghép nhầm** (người dùng xác nhận ngày 08/11/2026: một phiên Claude ở dự án này giao agy làm việc ở thư mục của dự án khác). Vì vậy `projectKey` của một lần giao luôn là dự án của **phiên Claude giao việc**, còn thư mục làm việc của agy (`workspace`) cho biết việc thực sự diễn ra ở đâu; hai giá trị khác nhau là bình thường, đừng "sửa" cho khớp và đừng coi sự khác biệt là dấu hiệu ghép sai. Điều này cũng có nghĩa không thể dùng độ khớp giữa hai thư mục để kiểm tra chất lượng ghép lệnh với hội thoại; kiểm chất lượng ghép bằng model, giờ bắt đầu và lời nhắc (90 trên 150 cặp có lời nhắc ở cả hai nguồn khớp hoàn toàn sau che và cắt).
 
 ## Model và làn
 
