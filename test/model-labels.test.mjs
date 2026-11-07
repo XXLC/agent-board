@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
-import { modelLabel, modelFamilyLane, countModels, modelText, LANE_LABELS } from '../public/model-labels.js';
+import { modelLabel, modelFamilyLane, countModels, latestPerFamily, modelText, LANE_LABELS } from '../public/model-labels.js';
 import { Scanner } from '../lib/scanner.mjs';
 import { parseCommands, mergeCodex } from '../lib/parsers.mjs';
 import { readCodexDefault } from '../lib/codex-config.mjs';
@@ -156,4 +156,17 @@ test('Luồng quét giữ effort ở cả hai dạng turn_context giống luồn
     assert.deepEqual(read.entry, entry);
     assert.equal(read.entry.effort, i ? 'medium' : 'high');
   }
+});
+
+test('latestPerFamily chọn phiên bản mới nhất của mỗi họ model', () => {
+  assert.deepEqual(
+    latestPerFamily(['claude-opus-4-8', 'claude-opus-5-5', 'claude-sonnet-5', 'claude-sonnet-5-5', '', 'claude-haiku-5-5']).sort(),
+    ['claude-haiku-5-5', 'claude-opus-5-5', 'claude-sonnet-5-5'],
+  );
+  assert.deepEqual(latestPerFamily(['claude-opus-5', 'claude-opus-5-5']), ['claude-opus-5-5'], '5.5 mới hơn 5');
+  assert.deepEqual(latestPerFamily(['claude-opus-5-5-high', 'claude-opus-5-5']).length, 1, 'cùng họ và phiên bản thì chỉ một');
+  assert.deepEqual(latestPerFamily([]), []);
+  assert.deepEqual(latestPerFamily(undefined), []);
+  // Model không nhận ra giữ nguyên, mỗi id lạ là một họ riêng.
+  assert.deepEqual(latestPerFamily(['gpt-6.1-sol']), ['gpt-6.1-sol']);
 });

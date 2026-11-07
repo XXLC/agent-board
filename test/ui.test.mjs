@@ -385,3 +385,19 @@ test('Giao chéo dự án dùng chung hàm nhãn và hiển thị ở thẻ, chi
   assert.equal(ui.evaluate('window.mapFiltered.length'), 1);
   assert.match(ui.evaluate('window.mapKey'), /:same$/);
 });
+
+test('Thẻ Claude liệt kê cả model đã dùng trong 7 ngày nhưng chưa có đoạn trong 24 giờ (số 0)', () => {
+  const ui = board();
+  ui.evaluate(`
+    runs = [];
+    state = { lanes: [{ lane: 'Claude', knownModel: 'claude-sonnet-5-5', state: 'Rảnh', activity24h: 5,
+      models24h: { 'claude-sonnet-5-5': 33 },
+      models7d: { 'claude-sonnet-5-5': 120, 'claude-opus-5-5': 5, 'claude-opus-4-8': 4, 'claude-sonnet-5': 3, '': 2 } }] };
+    renderCards();
+  `);
+  // Chỉ model hiện hành (mới nhất mỗi họ) được liệt kê số 0; Opus 4.8 và Sonnet 5 cũ không làm rối thẻ.
+  assert.equal(ui.evaluate("cardElements.get('Claude').modelSummary.textContent"), '24 giờ: Sonnet 5.5 x 33 đoạn · Opus 5.5 x 0 đoạn');
+  // Không có dữ liệu 7 ngày thì giữ cách hiển thị cũ.
+  ui.evaluate(`state = { lanes: [{ lane: 'Claude', knownModel: 'claude-sonnet-5-5', state: 'Rảnh', models24h: { 'claude-sonnet-5-5': 3 } }] }; renderCards();`);
+  assert.equal(ui.evaluate("cardElements.get('Claude').modelSummary.textContent"), '24 giờ: Sonnet 5.5 x 3 đoạn');
+});

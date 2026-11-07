@@ -25,7 +25,7 @@ const edgeLayer = shape('g', { class: 'map-edges', 'aria-hidden': 'true' });
 const nodeLayer = shape('g', { class: 'map-nodes' });
 svg.append(defs, edgeLayer, nodeLayer);
 const nodeElements = new Map(), edgeElements = new Map();
-let layout, currentRuns = [], filteredCount = 0, showDetails, scope, view, active = false, drag;
+let layout, currentRuns = [], claudeModels = [], filteredCount = 0, showDetails, scope, view, active = false, drag;
 const expanded = new Set(), collapsed = new Set();
 const seenDelegations = new Set();
 let wave = 0, edgeSequence = 0;
@@ -98,7 +98,7 @@ function description(node, now = Date.now()) {
 }
 function draw(reset = false) {
   const now = Date.now();
-  layout = layoutMindmap(currentRuns, { previous: reset ? undefined : layout, expanded, collapsed, now });
+  layout = layoutMindmap(currentRuns, { previous: reset ? undefined : layout, expanded, collapsed, now, claudeModels });
   const present = new Set(layout.nodes.map(node => node.id));
   for (const [id, item] of nodeElements) if (!present.has(id)) { item.group.remove(); nodeElements.delete(id); }
   const byId = new Map(layout.nodes.map(node => [node.id, node]));
@@ -176,12 +176,11 @@ function draw(reset = false) {
       const r = node.r;
       item.crossMark.setAttribute('d', `M${-r - 7} ${-r + 2} L${-r - 1} ${-r + 2} L${-r - 1} ${-r - 1} L${-r + 3} ${-r + 3.5} L${-r - 1} ${-r + 8} L${-r - 1} ${-r + 5} L${-r - 7} ${-r + 5} Z`);
     }
-    if ((working && ['lane', 'run'].includes(node.type)) || (node.type === 'root' && node.delegating && wave)) halos(item, node.r, laneColor(node.lane));
+    if ((working && ['root', 'lane', 'run'].includes(node.type)) || (node.type === 'root' && node.delegating && wave)) halos(item, node.r, laneColor(node.lane));
     item.badge.setAttribute('transform', `translate(0 ${-node.r - 18})`);
     item.badge.setAttribute('display', node.type === 'lane' && working ? 'inline' : 'none');
     item.badge.children[2].textContent = `${node.running} đang chạy`;
-    item.phaseLabel.textContent = working && ['lane', 'run'].includes(node.type) ? `đang ${node.phase}` : '';
-    item.phaseLabel.setAttribute('y', node.type === 'run' ? node.r + 42 : 40);
+    item.phaseLabel.textContent = working && ['root', 'lane', 'run'].includes(node.type) ? `đang ${node.phase}` : '';
     item.group.setAttribute('transform', `translate(${node.x} ${node.y})`);
     item.group.setAttribute('aria-label', description(node, now));
     if (node.type === 'project' || node.type === 'lane') item.group.setAttribute('aria-expanded', !collapsed.has(node.id));
@@ -204,6 +203,8 @@ function draw(reset = false) {
       item.subtitle.children[i].textContent = line;
     });
     item.subtitle.setAttribute('y', node.type === 'run' ? node.r + 28 : 23);
+    // Nhãn pha nằm ngay dưới dòng phụ đề cuối: nút một dòng giữ y = 40, nút gốc nhiều dòng (model Claude) được đẩy xuống để không đè chữ.
+    item.phaseLabel.setAttribute('y', node.type === 'run' ? node.r + 42 : 23 + 14 * (subtitleLines.length - 1) + 17);
     item.mark.textContent = status === 'error' ? 'X' : '';
   }
   $('mindmap-empty').hidden = layout.count > 0;
@@ -247,8 +248,8 @@ svg.addEventListener('pointermove', event => {
 });
 for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) svg.addEventListener(event, () => { drag = null; });
 window.boardMindmap = {
-  update(runs, detail, key, claudeRuns = []) {
-    filteredCount = runs.length;
+  update(runs, detail, key, claudeRuns = [], knownClaudeModels = []) {
+    filteredCount = runs.length; claudeModels = knownClaudeModels;
     const ids = new Set(runs.map(run => run.id));
     currentRuns = [...runs, ...claudeRuns.filter(run => !ids.has(run.id))]; showDetails = detail;
     const reset = scope !== key;

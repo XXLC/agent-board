@@ -943,6 +943,11 @@ footer p {
 .map-root.root-wave-1 .map-halo { animation-iteration-count:2; }
 .map-root.root-wave-2 .map-halo { animation-name:activity-halo-again; animation-iteration-count:2; }
 .map-root .halo-1 { display:none; }
+/* Nút gốc (Claude) đang chạy: hai vòng halo lan tỏa liên tục như nút làn và lá; đặt sau các quy tắc gợn sóng
+   để "đang làm" luôn thắng số lần lặp, còn tên animation của gợn sóng vẫn đổi qua lại để phát lại khi có lần giao mới. */
+.map-root.activity-working .map-halo { display:inline; animation:activity-halo 1.6s ease-out infinite both; }
+.map-root.activity-working.root-wave-2 .map-halo { animation-name:activity-halo-again; }
+.map-root.activity-working .halo-1 { display:inline; }
 @keyframes activity-halo {
   from { transform:scale(1); opacity:.9; }
   to { transform:scale(1.6); opacity:0; }
@@ -1076,7 +1081,13 @@ footer p {
     stroke-width:4;
     stroke-dasharray:none;
   }
-  .map-lane .halo-1,.map-run .halo-1,.map-root .map-halo,.map-particles { display:none!important; }
+  .map-root.activity-working .map-halo {
+    opacity:1;
+    transform:scale(1.12);
+    stroke-width:4;
+    stroke-dasharray:none;
+  }
+  .map-lane .halo-1,.map-run .halo-1,.map-root .halo-1,.map-root:not(.activity-working) .map-halo,.map-particles { display:none!important; }
   /* Giảm chuyển động: cạnh đang giao có mũi tên và chấm đặc; cạnh đang làm chỉ có nét đứt tĩnh,
      nên hai trạng thái vẫn phân biệt được mà không cần animation. */
   .map-edge.activity-delegating > .map-end-dot,.map-edge.activity-delegating > .map-arrow,

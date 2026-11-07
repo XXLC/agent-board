@@ -257,3 +257,44 @@ test('Sơ đồ hiển thị dấu giao chéo trên lá, số lần giao chéo t
   assert.equal(crossLeaf.group.attributes.transform, crossTransform);
   assert.equal(projectNode.group.attributes.transform, projectTransform);
 });
+
+test('Bóng Claude ở giữa có halo và nhãn "đang làm" khi Claude đang chạy, tắt khi xong', () => {
+  const ui = board();
+  const now = ui.evaluate('Date.now()');
+  const running = { lane: 'Claude', id: 'claude-chạy', kind: 'hoạt động', model: 'claude-sonnet-5-5', sourceSession: 's', running: true, start: now - 300_000, end: null };
+  ui.window.boardMindmap.update([], () => {}, 'gốc-chạy', [running], ['claude-sonnet-5-5', 'claude-opus-5-5']);
+  const root = ui.evaluate("nodeElements.get('root')");
+  assert.match(root.group.attributes.class, /activity-working/);
+  assert.equal(root.halos?.length, 2, 'nút gốc phải có hai vòng halo khi Claude đang chạy');
+  assert.equal(root.phaseLabel.textContent, 'đang làm');
+  assert.match(root.group.attributes.class, /^((?!root-wave).)*$/, 'không có lần giao mới nên không phát gợn sóng');
+  // Danh sách model đã dùng có Opus 5.5 dù khung chưa có đoạn Opus.
+  assert.match(ui.evaluate("nodeElements.get('root').group.attributes['aria-label']"), /Sonnet 5\.5 x 1.*Opus 5\.5 x 0/);
+  // Claude xong: tắt hiệu ứng.
+  ui.window.boardMindmap.update([], () => {}, 'gốc-chạy', [{ ...running, running: false, end: now - 1000 }], ['claude-sonnet-5-5', 'claude-opus-5-5']);
+  assert.doesNotMatch(root.group.attributes.class, /activity-working/);
+  assert.equal(root.phaseLabel.textContent, '');
+});
+
+test('Nhãn "đang làm" của nút gốc nằm dưới mọi dòng phụ đề, không đè lên dòng model cuối', () => {
+  const ui = board();
+  const now = ui.evaluate('Date.now()');
+  const running = { lane: 'Claude', id: 'claude-chạy', kind: 'hoạt động', model: 'claude-sonnet-5-5', sourceSession: 's', running: true, start: now - 300_000, end: null };
+  const lineY = (models) => {
+    ui.window.boardMindmap.update([], () => {}, `nhãn-${models.length}`, [running], models);
+    const root = ui.evaluate("nodeElements.get('root')");
+    const lines = root.subtitle.children.length;
+    return { lines, subtitleY: Number(root.subtitle.attributes.y), phaseY: Number(root.phaseLabel.attributes.y) };
+  };
+  // Một dòng model: giữ vị trí cũ (y = 40), vẫn dưới dòng phụ đề (y = 23, cao chữ khoảng 14).
+  const one = lineY([]);
+  assert.equal(one.lines, 1); assert.equal(one.phaseY, 40);
+  // Hai và ba dòng model: mỗi dòng thêm 14 đơn vị nên nhãn pha phải lùi xuống tương ứng, luôn cách dòng cuối ít nhất 17.
+  const two = lineY(['claude-opus-5-5']);
+  assert.equal(two.lines, 2);
+  assert.ok(two.phaseY - (two.subtitleY + 14 * (two.lines - 1)) >= 17, 'nhãn pha đè lên dòng phụ đề cuối');
+  const three = lineY(['claude-opus-5-5', 'claude-haiku-5-5']);
+  assert.equal(three.lines, 3);
+  assert.ok(three.phaseY - (three.subtitleY + 14 * (three.lines - 1)) >= 17);
+  assert.ok(three.phaseY > two.phaseY && two.phaseY > one.phaseY);
+});

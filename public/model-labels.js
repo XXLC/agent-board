@@ -48,6 +48,27 @@ export function countModels(runs) {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'vi'));
 }
 
+// Phiên bản mới nhất của mỗi họ model trong danh sách id thô (Opus 5.5 thắng Opus 4.8, Sonnet 5.5 thắng Sonnet 5).
+// Dùng để chỉ liệt kê "số 0" cho model hiện hành, tránh làm rối bằng các model cũ đã ngừng dùng.
+export function latestPerFamily(rawIds) {
+  const parts = value => String(value || '').split('.').map(Number).filter(Number.isFinite);
+  const newer = (a, b) => {
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      const diff = (a[i] || 0) - (b[i] || 0);
+      if (diff) return diff > 0;
+    }
+    return false;
+  };
+  const best = new Map();
+  for (const raw of rawIds || []) {
+    if (!raw) continue;
+    const { family, version } = modelLabel(raw);
+    const key = family || raw, current = best.get(key), candidate = parts(version);
+    if (!current || newer(candidate, current.parts)) best.set(key, { raw, parts: candidate });
+  }
+  return [...best.values()].map(item => item.raw);
+}
+
 export function modelSummary(runs, unit = '') {
   return countModels(runs).map(({ name, count }) => `${name} x ${count}${unit ? ` ${unit}` : ''}`).join(' · ');
 }

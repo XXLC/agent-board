@@ -45,7 +45,7 @@ Mọi nguồn chỉ đọc. Chỉ mục nằm trong bộ nhớ; khởi động l
 
 Chỉ có `GET`:
 
-- `/api/state`: trạng thái bốn làn, tiến độ quét (kèm thống kê, gồm `crossProjects`), cấu hình Codex hiện tại.
+- `/api/state`: trạng thái bốn làn (kèm `models24h` và `models7d`: số lần chạy theo model trong 24 giờ và 7 ngày), tiến độ quét (kèm thống kê, gồm `crossProjects`), cấu hình Codex hiện tại.
 - `/api/runs?from=ISO&to=ISO`: các lần giao việc và đoạn hoạt động trong khoảng; lời nhắc đã che; có cờ `crossProject` và các trường `workProject*` khi giao chéo dự án.
 - `/events`: SSE đẩy trạng thái mỗi khi đổi, nhịp tim mỗi 15 giây.
 

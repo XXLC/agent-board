@@ -6,7 +6,7 @@ Giao diện là HTML, CSS và JS thuần trong `public/`, không framework, khô
 
 Mã làn nội bộ (`Claude`, `Codex`, `Opus`, `Argon`) giữ nguyên ở API. Tên hiển thị nằm ở hằng số `LANE_LABELS` trong `public/model-labels.js`: **Claude Code**, **Codex**, **Antigravity Opus** (Claude chạy qua agy), **Gemini Argon** (Gemini chạy qua agy). Tên làn chỉ là vai trò, nên mỗi lần chạy luôn ghi đúng model; model lệch tên làn có chú thích "model khác tên làn" ở chi tiết và tooltip.
 
-Trong làn Claude Code, Sonnet và Opus phân biệt bằng chữ và hoa văn, không chỉ bằng màu: tiền tố "S 5.5" và "O 5.5", viền đôi cho Opus; thẻ ghi số đoạn theo model. Bộ lọc **Model** liệt kê tên đẹp kèm số lần ("Sonnet 5.5 (22)") và dùng chung cho cả dòng thời gian và sơ đồ.
+Trong làn Claude Code, Sonnet và Opus phân biệt bằng chữ và hoa văn, không chỉ bằng màu: tiền tố "S 5.5" và "O 5.5", viền đôi cho Opus; thẻ ghi số đoạn theo model. Thẻ Claude Code ghi số đoạn theo model trong 24 giờ và **liệt kê cả phiên bản mới nhất của mỗi họ model đã dùng trong 7 ngày** dù chưa có đoạn nào trong khung (số 0, ví dụ "Opus 5.5 x 0"), để thấy Claude còn dùng Opus 5.5; model cũ (Sonnet 5, Opus 4.8) chỉ hiện khi thật sự có đoạn trong khung (`latestPerFamily` trong `public/model-labels.js`, dữ liệu `models7d` ở `/api/state`). Nút gốc của sơ đồ liệt kê model theo đúng quy tắc đó. Bộ lọc **Model** liệt kê tên đẹp kèm số lần ("Sonnet 5.5 (22)") và dùng chung cho cả dòng thời gian và sơ đồ.
 
 ## Thẻ trạng thái
 
@@ -53,6 +53,7 @@ Khi phiên Claude ở dự án A giao việc cho model làm việc ở thư mụ
 Hiển thị:
 
 - Cạnh từ Claude ra làn đang giao: nét đứt chạy theo chiều giao, mũi tên ở đầu phía làn, vài hạt tròn chạy dọc cạnh; gợn sóng ở nút Claude chỉ phát khi có lần giao mới.
+- Nút gốc Claude Code có vòng halo liên tục và nhãn "đang làm" khi có đoạn Claude đang chạy, kể cả khi chưa giao việc cho ai (Claude tự làm không phải là "đang giao"); nhãn nằm dưới dòng phụ đề cuối nên không đè chữ khi phụ đề có nhiều dòng model.
 - Nút làn và lá đang chạy: hai vòng halo lệch pha lan tỏa; cả đường làn, dự án, lá của run đang chạy sáng bằng nét đứt; huy hiệu "N đang chạy" ở nút làn.
 - Dòng thời gian: thanh đang chạy có chấm nhấp nháy ở đầu phải và viền nét đứt chạy, nhãn "đang giao"/"đang làm" nếu thanh đủ rộng; nhãn làn và thẻ có chấm nhấp nháy.
 - Phần tử hiệu ứng chỉ có ở run đang chạy, chỉ animate `transform` và `opacity`, tạm dừng khi tab ẩn (`data-motion-paused`).

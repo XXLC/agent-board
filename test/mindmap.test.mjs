@@ -110,3 +110,32 @@ test('Nhãn làn dài, model lá và nhiều dòng tóm tắt Claude không ch�
   assert.equal(next.nodes.find(node => node.id === 'lane:Argon').label, 'Gemini Argon');
   assert.equal(next.nodes[0].subtitleLines.length, 5);
 });
+
+test('Nút gốc (Claude) đang làm khi có đoạn Claude đang chạy dù chưa giao việc cho ai', () => {
+  const idle = layoutMindmap([{ lane: 'Claude', id: 'xong', model: 'claude-sonnet-5-5', running: false, start: now - 9000, end: now - 5000 }], { now });
+  assert.equal(idle.nodes.find(node => node.id === 'root').running, 0);
+  assert.equal(idle.nodes.find(node => node.id === 'root').phase, 'nghỉ');
+  const busy = layoutMindmap([{ lane: 'Claude', id: 'chạy', model: 'claude-sonnet-5-5', running: true, start: now - 9000, end: null }], { now });
+  const root = busy.nodes.find(node => node.id === 'root');
+  assert.equal(root.running, 1);
+  assert.equal(root.phase, 'làm');
+  assert.equal(root.delegating, false, 'Claude tự làm việc không phải là đang giao');
+  // Run giao việc cho Codex đang chạy không được đếm trùng với đoạn Claude.
+  const both = layoutMindmap([
+    { lane: 'Claude', id: 'chạy', model: 'claude-sonnet-5-5', running: true, start: now - 9000, end: null },
+    { lane: 'Codex', id: 'codex', kind: 'giao việc', running: true, projectKey: 'a', projectLabel: 'A', start: now - 60_000, end: null },
+  ], { now });
+  assert.equal(both.nodes.find(node => node.id === 'root').running, 2);
+});
+
+test('Nút gốc liệt kê cả model Claude đã dùng gần đây nhưng chưa có đoạn nào trong khung (số 0)', () => {
+  const runs = [{ lane: 'Claude', id: 'a', model: 'claude-sonnet-5-5', sourceSession: 's', start: now - 9000, end: now - 5000 }];
+  const withKnown = layoutMindmap(runs, { now, claudeModels: ['claude-sonnet-5-5', 'claude-opus-5-5', '', 'claude-opus-5-5'] });
+  const lines = withKnown.nodes.find(node => node.id === 'root').subtitleLines;
+  assert.deepEqual(lines, ['Sonnet 5.5 x 1', 'Opus 5.5 x 0']);
+  const without = layoutMindmap(runs, { now });
+  assert.deepEqual(without.nodes.find(node => node.id === 'root').subtitleLines, ['Sonnet 5.5 x 1']);
+  // Model đã có đoạn trong khung không bị liệt kê hai lần.
+  const dup = layoutMindmap(runs, { now, claudeModels: ['claude-sonnet-5-5'] });
+  assert.deepEqual(dup.nodes.find(node => node.id === 'root').subtitleLines, ['Sonnet 5.5 x 1']);
+});

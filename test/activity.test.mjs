@@ -81,3 +81,13 @@ test('Chú giải: nét đứt chạy bị cắt để không đâm qua mũi tê
   assert.match(html, /<g clip-path="url\(#legend-flow-clip\)"><line class="map-flow"/);
   assert.doesNotMatch(html, /<svg[^>]*><line class="map-flow"/);
 });
+
+test('CSS: nút gốc đang chạy có halo liên tục và có phương án tĩnh khi giảm chuyển động', async () => {
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /\.map-root\.activity-working \.map-halo \{ display:inline; animation:activity-halo 1\.6s ease-out infinite both; \}/);
+  assert.match(css, /\.map-root\.activity-working \.halo-1 \{ display:inline; \}/);
+  const reduced = css.slice(css.indexOf('@media(prefers-reduced-motion:reduce)'));
+  assert.match(reduced, /\.map-root\.activity-working \.map-halo \{[^}]*stroke-width:4/);
+  // Nút gốc không chạy thì halo vẫn ẩn khi giảm chuyển động.
+  assert.match(reduced, /\.map-root:not\(\.activity-working\) \.map-halo/);
+});

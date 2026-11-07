@@ -1,5 +1,5 @@
 'use strict';
-import { LANE_LABELS, countModels, modelLabel, modelNote, modelPrefix, modelSummary, modelText } from './model-labels.js';
+import { LANE_LABELS, countModels, latestPerFamily, modelLabel, modelNote, modelPrefix, modelSummary, modelText } from './model-labels.js';
 import { CROSS_FILTER_OPTIONS, crossProjectBarText, crossProjectCardText, crossProjectCardTitle, crossProjectDetailText, crossProjectFooterText, matchesCrossFilter } from './model-labels.js';
 import { activityPhase, activityText, watchActivityVisibility } from './activity.js';
 const $ = id => document.getElementById(id);
@@ -9,6 +9,7 @@ const colors = { Claude: 'var(--claude)', Codex: 'var(--codex)', Opus: 'var(--op
 const local = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const tickFormat = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 let hours = 6, end = Date.now(), following = true, zoom = 1, runs = [], state, selected = null, pinned = false;
+const claudeLane = () => state?.lanes?.find(lane => lane.lane === 'Claude');
 let requestNumber = 0, fetchQueued = false, fetching = false, lastRangeKey = '';
 const cardElements = new Map();
 function element(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; }
@@ -54,8 +55,10 @@ function renderCards() {
     const model = { lane: lane.lane, model: raw, effort: lane.effort };
     card.model.textContent = modelText(model);
     card.model.title = modelText(model, true) + (modelNote(model) ? ` · ${modelNote(model)}` : '');
+    // Liệt kê cả model hiện hành (phiên bản mới nhất mỗi họ) đã dùng trong 7 ngày nhưng chưa có đoạn nào trong 24 giờ (số 0), ví dụ Opus 5.5.
+    const claudeModelCounts = { ...Object.fromEntries(latestPerFamily(Object.keys(lane.models7d || {})).map(model => [model, 0])), ...(lane.models24h || {}) };
     card.modelSummary.textContent = lane.lane === 'Claude' ? '24 giờ: ' + (modelSummary(
-      Object.entries(lane.models24h || {}).map(([model, count]) => ({ model, count })), 'đoạn') || 'Chưa có đoạn hoạt động') : '';
+      Object.entries(claudeModelCounts).filter(([model]) => model).map(([model, count]) => ({ model, count })), 'đoạn') || 'Chưa có đoạn hoạt động') : '';
     const codexDefault = state.config?.codexDefault;
     card.config.textContent = lane.lane === 'Codex' && codexDefault ? `Cấu hình hiện tại: ${modelText(codexDefault)}` : '';
     card.prompt.textContent = lane.prompt || 'Chưa có lời nhắc từ nguồn';
@@ -299,7 +302,7 @@ function renderChart() {
     && (!$('model-filter').value || modelLabel(r.model).name === $('model-filter').value)
     && matchesCrossFilter(r, crossValue));
   const scopeKey = `${hours}:${$('lane-filter').value}:${$('project-filter').value}:${$('model-filter').value}${crossValue ? `:${crossValue}` : ''}`;
-  window.boardMindmap?.update(filtered, showDetails, scopeKey, claudeRuns);
+  window.boardMindmap?.update(filtered, showDetails, scopeKey, claudeRuns, latestPerFamily(Object.keys(claudeLane()?.models7d || {})));
 }
 for (const button of document.querySelectorAll('[data-hours]')) button.addEventListener('click', () => {
   hours = Number(button.dataset.hours); zoom = 1;

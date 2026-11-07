@@ -71,7 +71,13 @@ export function layoutMindmap(runs, options = {}) {
   };
   const claudeRuns = runs.filter(run => run.lane === 'Claude');
   const sessions = new Set(claudeRuns.map(run => run.sourceSession)).size;
-  const modelLines = countModels(claudeRuns).map(({ name, count }) => `${name} x ${count}`);
+  // Liệt kê cả model Claude đã dùng gần đây nhưng chưa có đoạn nào trong khung đang xem (số đếm 0).
+  const counted = countModels(claudeRuns), listed = new Set(counted.map(item => item.name));
+  for (const raw of options.claudeModels || []) {
+    const name = raw ? modelLabel(raw).name : '';
+    if (name && !listed.has(name)) { counted.push({ name, count: 0 }); listed.add(name); }
+  }
+  const modelLines = counted.map(({ name, count }) => `${name} x ${count}`);
   const subtitleLines = modelLines.length ? modelLines : [`${sessions} phiên hoạt động`];
   place({ id: 'root', type: 'root', label: LANE_LABELS.Claude,
     subtitle: subtitleLines.join(' · '), subtitleLines, r: Math.max(70, 42 + subtitleLines.length * 14) }, null);
@@ -142,7 +148,8 @@ export function layoutMindmap(runs, options = {}) {
   const byId = new Map(nodes.map(node => [node.id, node]));
   for (const node of nodes) {
     const own = node.type === 'root' ? work : node.run ? [node.run] : node.runs || [];
-    node.running = own.filter(run => run.running).length;
+    // Nút gốc là chính Claude: đang làm khi có đoạn Claude đang chạy, kể cả khi chưa giao việc cho ai.
+    node.running = own.filter(run => run.running).length + (node.type === 'root' ? claudeRuns.filter(run => run.running).length : 0);
     node.delegating = own.some(run => activityPhase(run, now) === 'giao');
     node.phase = node.delegating ? 'giao' : node.running ? 'làm' : 'nghỉ';
   }
