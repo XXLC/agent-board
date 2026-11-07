@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Agent Board</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+  <script type="module" src="/mindmap.js"></script>
+</head>
+<body>
+  <main>
+    <header class="masthead">
+      <div><p class="eyebrow">KHÔNG GIAN LÀM VIỆC CỤC BỘ</p><h1>Agent Board<span class="small-tag">Trực tiếp</span></h1><p class="subtitle">Bốn làn làm việc. Một góc nhìn chung.</p></div>
+      <div class="connection"><span id="connection">Đang kết nối</span><time id="clock"></time><span>Giờ Việt Nam · UTC+7</span></div>
+    </header>
+    <section aria-label="Trạng thái trực tiếp" id="cards" class="cards"></section>
+    <section id="scan-progress" class="scan-progress" role="status"><span id="scan-label">Đang quét lần đầu</span><progress id="progress" max="100" value="0"></progress></section>
+    <section class="timeline-section" aria-labelledby="timeline-title">
+      <div class="section-heading"><div><p class="eyebrow">LỊCH SỬ HOẠT ĐỘNG</p><h2 id="timeline-title">Dòng thời gian</h2></div><p id="run-count" class="muted" aria-live="polite">Đang nạp dữ liệu</p></div>
+      <div class="view-tabs" role="tablist" aria-label="Kiểu biểu đồ">
+        <button id="tab-timeline" role="tab" aria-controls="timeline-view" aria-selected="true">Dòng thời gian</button>
+        <button id="tab-mindmap" role="tab" aria-controls="mindmap-view" aria-selected="false">Sơ đồ</button>
+      </div>
+      <div class="controls">
+        <fieldset class="ranges"><legend class="sr-only">Khoảng thời gian</legend><button data-hours="6" aria-pressed="true">6 giờ</button><button data-hours="24">24 giờ</button><button data-hours="168">7 ngày</button><button data-hours="720">30 ngày</button></fieldset>
+        <label>Làn<select id="lane-filter"><option value="">Tất cả các làn</option></select></label>
+        <label>Model<select id="model-filter"><option value="">Tất cả model</option></select></label>
+        <label class="project-control">Dự án<select id="project-filter"><option value="">Tất cả dự án</option></select></label>
+      </div>
+      <p id="project-reasons" class="muted" role="status"></p>
+      <div class="chart-toolbar"><span id="range-label"></span><div class="navigation"><button id="previous" aria-label="Lùi khoảng thời gian">Lùi</button><button id="now">Hiện tại</button><button id="next" aria-label="Tiến khoảng thời gian">Tiến</button><button id="zoom-out" aria-label="Thu nhỏ">Thu nhỏ</button><button id="zoom-in" aria-label="Phóng to">Phóng to</button><button id="focus-activity">Phóng to vùng hoạt động</button></div></div>
+      <div id="timeline-view" role="tabpanel" aria-labelledby="tab-timeline">
+      <div class="chart-shell" id="chart-shell" tabindex="0" role="region" aria-label="Biểu đồ hoạt động, cuộn ngang hoặc kéo vùng trống để xem"><div id="chart" class="chart"></div></div>
+      <p id="empty" class="empty" hidden>Chưa có hoạt động trong khoảng và bộ lọc này.</p>
+      </div>
+      <div id="mindmap-view" role="tabpanel" aria-labelledby="tab-mindmap" hidden>
+        <div class="mindmap-toolbar">
+          <button id="map-zoom-out" aria-label="Thu nhỏ sơ đồ">Thu nhỏ</button>
+          <button id="map-zoom-in" aria-label="Phóng to sơ đồ">Phóng to</button>
+          <button id="map-center">Căn giữa</button>
+          <button id="map-reorder">Sắp xếp lại</button>
+          <span class="muted">Kéo nền để di chuyển. Bấm làn hoặc dự án để thu gọn, mở rộng.</span>
+        </div>
+        <svg id="mindmap" role="group" aria-label="Sơ đồ điều phối các lần giao việc"></svg>
+        <p id="mindmap-empty" class="empty" hidden>Chưa có lần giao việc trong khoảng này</p>
+        <div class="legend mindmap-legend" aria-label="Chú giải chuyển động của sơ đồ">
+          <span><svg viewBox="0 0 80 32" aria-hidden="true" class="activity-delegating" style="--travel:54px"><clipPath id="legend-flow-clip"><rect x="0" y="10" width="54" height="12"/></clipPath><g clip-path="url(#legend-flow-clip)"><line class="map-flow" x1="-20" y1="16" x2="64" y2="16"/></g><path class="map-arrow" d="M54 12 L62 16 L54 20 Z"/><g class="map-particles" transform="translate(4 16)"><circle class="map-packet" r="3"/><circle class="map-packet" r="3" style="animation-delay:-.9s"/></g><circle class="map-end-dot" cx="46" cy="16" r="3"/></svg>Nét đứt chạy từ Claude = đang giao việc</span>
+          <span><svg viewBox="0 0 80 32" aria-hidden="true"><g class="map-lane activity-working"><circle cx="38" cy="16" r="7" fill="none" stroke="var(--lane)"/><circle class="map-halo halo-0" cx="38" cy="16" r="9"/><circle class="map-halo halo-1" cx="38" cy="16" r="9"/></g></svg>Vòng tròn nhấp nháy = đang làm</span>
+          <span><svg viewBox="0 0 80 32" aria-hidden="true"><line x1="4" y1="16" x2="64" y2="16" stroke="var(--line)" stroke-width="1.2"/></svg>Nét liền mảnh = đã xong</span>
+        </div>
+      </div>
+      <div class="legend"><span><i class="sample ok"></i>Thành công</span><span><i class="sample error">X</i>Lỗi</span><span><i class="sample quota"></i>Hết quota</span><span><i class="sample running"></i>Đang chạy</span><span><i class="sample unknown"></i>Chưa rõ</span><span id="legend-sonnet"><i class="sample claude-sonnet"></i><span></span></span><span id="legend-opus"><i class="sample claude-opus"></i><span></span></span><span class="muted">Thanh mờ: phiên tương tác. Kéo vùng trống để cuộn.</span></div>
+    </section>
+    <aside id="details" class="details" aria-labelledby="detail-title"><div class="detail-heading"><div><p class="eyebrow">CHI TIẾT PHIÊN</p><h2 id="detail-title">Chọn một thanh hoạt động</h2></div><button id="clear-detail" hidden>Đóng chi tiết</button></div><p id="detail-hint" class="muted">Rê chuột, dùng phím Tab hoặc bấm vào thanh để xem nguồn và kết quả.</p><dl id="detail-fields"></dl></aside>
+    <footer><span id="scan-footer">Đang chuẩn bị nguồn dữ liệu</span><span>Chỉ đọc nguồn cục bộ · Không lưu lời nhắc thô</span><p id="warnings" role="status"></p></footer>
+  </main>
+</body>
+</html>

@@ -1,0 +1,8 @@
+# Tệp tạm, nhật ký, báo cáo đo (có thể chứa thống kê từ dữ liệu thật)
+.cache/
+node_modules/
+*.log
+
+# Tệp hệ điều hành và trình soạn thảo
+Thumbs.db
+.DS_Store
