@@ -217,3 +217,43 @@ test('Tab Sơ đồ ẩn không tính bố cục mỗi giây, chuyển sang tab 
   assert.ok(ui.evaluate('nodeElements.size') > before, 'chuyển sang tab Sơ đồ phải vẽ ngay');
   assert.match(ui.evaluate("nodeElements.get('run:tổng-hợp').title.textContent"), /bản mới nhất/);
 });
+
+test('Sơ đồ hiển thị dấu giao chéo trên lá, số lần giao chéo trên nút dự án và giữ nguyên nút khi SSE cập nhật', () => {
+  const ui = board();
+  const runs = [
+    {
+      ...sample, id: 'lá-chéo', projectKey: 'd--Workspace-DuAn-A', projectLabel: 'DuAn_A',
+      crossProject: true, workProjectKey: 'd--Workspace-DuAn-B', workProjectLabel: 'DuAn_B',
+      workProjectPath: 'D:/Workspace/DuAn_B', workProjectOutsideClaude: false,
+    },
+    {
+      ...sample, id: 'lá-cùng', projectKey: 'd--Workspace-DuAn-A', projectLabel: 'DuAn_A',
+      crossProject: false,
+    },
+  ];
+  ui.window.boardMindmap.update(runs, () => {}, 'chéo');
+  const crossLeaf = ui.evaluate("nodeElements.get('run:lá-chéo')");
+  const sameLeaf = ui.evaluate("nodeElements.get('run:lá-cùng')");
+  const projectNode = ui.evaluate("nodeElements.get('project:Codex:d--Workspace-DuAn-A')");
+  const crossTransform = crossLeaf.group.attributes.transform;
+  const projectTransform = projectNode.group.attributes.transform;
+
+  assert.match(crossLeaf.group.attributes.class, /cross-project/);
+  assert.equal(crossLeaf.crossMark.attributes.display, 'inline');
+  assert.ok(crossLeaf.crossMark.attributes.d);
+  assert.match(crossLeaf.title.textContent, /giao chéo: làm việc ở dự án DuAn_B/);
+  assert.match(crossLeaf.group.attributes['aria-label'], /giao chéo: làm việc ở dự án DuAn_B/);
+
+  assert.doesNotMatch(sameLeaf.group.attributes.class, /cross-project/);
+  assert.equal(sameLeaf.crossMark.attributes.display, 'none');
+  assert.doesNotMatch(sameLeaf.title.textContent, /giao chéo:/);
+
+  assert.match(projectNode.title.textContent, /1 lần giao chéo sang dự án khác/);
+  assert.match(projectNode.group.attributes['aria-label'], /1 lần giao chéo sang dự án khác/);
+
+  ui.window.boardMindmap.update(runs.map(run => ({ ...run, running: false, status: 'ok', end: run.start + 50000 })), () => {}, 'chéo');
+  assert.equal(ui.evaluate("nodeElements.get('run:lá-chéo')"), crossLeaf);
+  assert.equal(ui.evaluate("nodeElements.get('project:Codex:d--Workspace-DuAn-A')"), projectNode);
+  assert.equal(crossLeaf.group.attributes.transform, crossTransform);
+  assert.equal(projectNode.group.attributes.transform, projectTransform);
+});

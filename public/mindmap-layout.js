@@ -114,6 +114,7 @@ export function layoutMindmap(runs, options = {}) {
         id, parent: laneId, type: 'project', lane: arc.lane, projectKey: key, r: 74,
         label: unknown ? fullLabel : shortenLabel(fullLabel), fullLabel,
         unknownReasons: [...reasons].map(([reason, count]) => `${reason}: ${count}`).join('; '),
+        crossCount: projectRuns.filter(run => run.crossProject).length,
         subtitle: `${projectRuns.length} lần giao`, runs: projectRuns,
       }, part, 450, theta);
       if (collapsed.has(id)) return;
@@ -122,6 +123,7 @@ export function layoutMindmap(runs, options = {}) {
         const leafAngle = part.start + (part.end - part.start) * (i % 9 + 1) / 10;
         const label = modelLabel(run.model);
         place({ id: `run:${run.id}`, parent: id, type: 'run', lane: arc.lane, run, r: leafRadius(run, now),
+          crossProject: Boolean(run.crossProject),
           label: label.name, subtitle: run.effort || label.effort },
           part, 620 + Math.floor(i / 9) * 44, leafAngle);
       });

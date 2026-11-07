@@ -1,5 +1,6 @@
 'use strict';
 import { LANE_LABELS, countModels, modelLabel, modelNote, modelPrefix, modelSummary, modelText } from './model-labels.js';
+import { CROSS_FILTER_OPTIONS, crossProjectBarText, crossProjectCardText, crossProjectCardTitle, crossProjectDetailText, crossProjectFooterText, matchesCrossFilter } from './model-labels.js';
 import { activityPhase, activityText, watchActivityVisibility } from './activity.js';
 const $ = id => document.getElementById(id);
 watchActivityVisibility(document);
@@ -20,6 +21,12 @@ function duration(ms) {
 function format(value) { return value == null ? 'Chưa rõ' : local.format(value); }
 for (const lane of lanes) {
   const option = element('option', '', LANE_LABELS[lane]); option.value = lane; $('lane-filter').append(option);
+}
+if ($('cross-filter')) {
+  $('cross-filter').replaceChildren();
+  for (const { value, label } of CROSS_FILTER_OPTIONS) {
+    const option = element('option', '', label); option.value = value; $('cross-filter').append(option);
+  }
 }
 for (const [id, raw] of [['legend-sonnet', 'claude-sonnet-5-5'], ['legend-opus', 'claude-opus-5-5']]) {
   $(id).append(element('span', '', `${LANE_LABELS.Claude}: ${modelLabel(raw).name} (${modelPrefix(raw)})`));
@@ -53,7 +60,9 @@ function renderCards() {
     card.config.textContent = lane.lane === 'Codex' && codexDefault ? `Cấu hình hiện tại: ${modelText(codexDefault)}` : '';
     card.prompt.textContent = lane.prompt || 'Chưa có lời nhắc từ nguồn';
     card.prompt.title = lane.promptTitle || card.prompt.textContent;
-    card.project.textContent = lane.projectLabel; card.project.title = lane.unknownReason || lane.projectLabel;
+    card.project.textContent = lane.crossProject ? crossProjectCardText(lane) : lane.projectLabel;
+    card.project.title = lane.crossProject ? crossProjectCardTitle(lane) : (lane.unknownReason || lane.projectLabel);
+    card.project.classList.toggle('cross-project', Boolean(lane.crossProject));
     const elapsed = duration((lane.running ? Date.now() : lane.end || lane.start) - lane.start);
     card.elapsed.textContent = lane.start ? lane.running
       ? activityPhase(lane) === 'giao' ? `Vừa giao ${elapsed} trước` : `Đang làm: ${elapsed}`
@@ -86,6 +95,8 @@ function renderState() {
   }
   if (projects) $('scan-footer').textContent += ` · Dự án: ${projects.known}/${projects.total} lần chạy xác định`
     + ` (trong đó ${projects.outsideClaude} ngoài thư mục project Claude)`;
+  const crossText = crossProjectFooterText(scan.statistics?.crossProjects || projects);
+  if (crossText) $('scan-footer').textContent += ` · ${crossText}`;
   const warnings = [...scan.warnings];
   if (scan.statistics?.excludedAgyCommands) warnings.push(
     `${scan.statistics.excludedAgyCommands} lệnh có nhắc agy chưa được phân làn: `
@@ -159,6 +170,7 @@ function showDetails(run, pin = false) {
     ['Trạng thái', run.running ? activityText(run) : names[run.status] || 'chưa rõ'],
     ['Thời lượng', duration((run.end ?? Date.now()) - run.start)], ['Kết quả', run.running ? 'chưa rõ · đang chạy' : names[run.status]],
     ['Dự án', run.unknownReason ? `không rõ vì ${run.unknownReason}` : (run.projectLabel || 'Không rõ dự án') + (run.outsideClaude ? ' (ngoài Claude)' : ''), true],
+    ...(run.crossProject ? [['Giao chéo dự án', crossProjectDetailText(run), true]] : []),
     ['Thư mục dự án', run.projectPath || 'Chưa rõ', true], ['Mã phiên nguồn', run.sourceSession, true],
     ...(run.rolloutSession ? [['Mã rollout ghép', run.rolloutSession, true]] : []),
     ...(run.agySession ? [['Mã hội thoại agy ghép', run.agySession, true]] : []),
@@ -199,10 +211,12 @@ function renderChart() {
     if (box.left < previousRight + 8) tick.remove();
     else previousRight = box.right;
   }
+  const crossValue = $('cross-filter')?.value || '';
   const filtered = runs.filter(r =>
     (!$('lane-filter').value || r.lane === $('lane-filter').value)
     && (!$('project-filter').value || r.projectKey === $('project-filter').value)
     && (!$('model-filter').value || modelLabel(r.model).name === $('model-filter').value)
+    && matchesCrossFilter(r, crossValue)
     && Number.isFinite(r.start) && r.start <= end && (r.end ?? Date.now()) >= start
   );
   $('run-count').textContent = `${filtered.length} thanh hoạt động`;
@@ -248,15 +262,21 @@ function renderChart() {
         }
         const dot = element('span', 'activity-dot run-now-dot'); dot.setAttribute('aria-hidden', 'true'); bar.append(dot);
       }
+      bar.classList.toggle('cross-project', Boolean(run.crossProject));
+      if (run.crossProject) {
+        const mark = element('span', 'cross-project-mark'); mark.setAttribute('aria-hidden', 'true'); bar.append(mark);
+      }
       bar.classList.toggle('continued', run.start < start);
       bar.style.left = `${left / areaWidth * 100}%`; bar.style.width = `${Math.max(0, visualEnd - left) / areaWidth * 100}%`; bar.style.top = `${16 + row * 30}px`;
       bar.dataset.id = run.id; bar.title = `${LANE_LABELS[run.lane]} · ${modelText(run, true)} · ${run.prompt || run.kind}`
-        + (modelNote(run) ? ` · ${modelNote(run)}` : '');
+        + (modelNote(run) ? ` · ${modelNote(run)}` : '')
+        + (run.crossProject ? ` · ${crossProjectBarText(run)}` : '');
       if (run.start < start) bar.title += ' · Tiếp tục từ trước khung nhìn';
       if (run.running) bar.title += ` · Trạng thái: ${activityText(run)}`;
       const statusText = run.running ? activityText(run) : run.status === 'error' ? 'lỗi'
         : run.status === 'unknown' ? 'chưa rõ' : run.status;
       bar.setAttribute('aria-label', `${LANE_LABELS[run.lane]}, ${modelText(run)}, ${run.kind}, ${format(run.start)}, ${statusText}, ${run.prompt}`
+        + (run.crossProject ? `, ${crossProjectBarText(run)}` : '')
         + (run.start < start ? ', tiếp tục từ trước khung nhìn' : '')
         + (run.endEstimated ? ', giờ kết thúc ước lượng' : ''));
       bar.classList.toggle('selected', selected?.id === run.id);
@@ -276,8 +296,10 @@ function renderChart() {
   $('focus-activity').disabled = filtered.length === 0;
   const claudeRuns = runs.filter(r => r.lane === 'Claude' && r.start <= end && (r.end ?? Date.now()) >= start
     && (!$('project-filter').value || r.projectKey === $('project-filter').value)
-    && (!$('model-filter').value || modelLabel(r.model).name === $('model-filter').value));
-  window.boardMindmap?.update(filtered, showDetails, `${hours}:${$('lane-filter').value}:${$('project-filter').value}:${$('model-filter').value}`, claudeRuns);
+    && (!$('model-filter').value || modelLabel(r.model).name === $('model-filter').value)
+    && matchesCrossFilter(r, crossValue));
+  const scopeKey = `${hours}:${$('lane-filter').value}:${$('project-filter').value}:${$('model-filter').value}${crossValue ? `:${crossValue}` : ''}`;
+  window.boardMindmap?.update(filtered, showDetails, scopeKey, claudeRuns);
 }
 for (const button of document.querySelectorAll('[data-hours]')) button.addEventListener('click', () => {
   hours = Number(button.dataset.hours); zoom = 1;
@@ -285,7 +307,7 @@ for (const button of document.querySelectorAll('[data-hours]')) button.addEventL
   void loadRuns();
 });
 $('lane-filter').addEventListener('change', renderChart); $('project-filter').addEventListener('change', renderChart);
-$('model-filter').addEventListener('change', renderChart);
+$('model-filter').addEventListener('change', renderChart); $('cross-filter')?.addEventListener('change', renderChart);
 $('previous').addEventListener('click', () => { following = false; end -= hours * 1800_000; void loadRuns(); });
 $('next').addEventListener('click', () => { end = Math.min(Date.now(), end + hours * 1800_000); following = Date.now() - end < 1000; void loadRuns(); });
 $('now').addEventListener('click', () => { following = true; end = Date.now(); void loadRuns(); });
@@ -296,7 +318,8 @@ $('focus-activity').addEventListener('click', () => {
   const own = runs.filter(r => Number.isFinite(r.start) && r.start <= end && (r.end ?? Date.now()) >= start
     && (!$('lane-filter').value || r.lane === $('lane-filter').value)
     && (!$('project-filter').value || r.projectKey === $('project-filter').value)
-    && (!$('model-filter').value || modelLabel(r.model).name === $('model-filter').value));
+    && (!$('model-filter').value || modelLabel(r.model).name === $('model-filter').value)
+    && matchesCrossFilter(r, $('cross-filter')?.value || ''));
   const target = own.find(r => r.id === selected?.id);
   const focus = target ? [target] : own;
   if (!focus.length) return;

@@ -1,5 +1,5 @@
 import { layoutMindmap } from './mindmap-layout.js';
-import { LANE_LABELS, modelNote, modelText } from './model-labels.js';
+import { LANE_LABELS, crossProjectLeafText, crossProjectNodeText, modelNote, modelText } from './model-labels.js';
 import { activityPhase, activityText } from './activity.js';
 
 const $ = id => document.getElementById(id);
@@ -84,6 +84,7 @@ function description(node, now = Date.now()) {
     const status = run.running ? activityText(run, now) : statuses[run.status] || 'chưa rõ';
     return `${LANE_LABELS[run.lane]}, ${modelText(run, true)}, ${run.projectLabel}, ${status}${run.endEstimated ? ', giờ kết thúc ước lượng' : ''}`
       + (modelNote(run) ? `, ${modelNote(run)}` : '')
+      + (run.crossProject ? `, ${crossProjectLeafText(run)}` : '')
       + `, ${Array.from(run.prompt || '').slice(0, 200).join('')}`
       + (run.promptSource ? `, nguồn lời nhắc: ${run.promptSource}` : '')
       + (run.unknownReason ? `, không rõ dự án vì ${run.unknownReason}` : '');
@@ -91,6 +92,7 @@ function description(node, now = Date.now()) {
   if (node.type === 'more') return `${node.label}, bấm để mở rộng`;
   const action = node.type === 'root' ? 'điều phối' : collapsed.has(node.id) ? 'bấm để mở rộng' : 'bấm để thu gọn';
   return `${node.fullLabel || node.label}, ${node.subtitle || ''}`
+    + (node.crossCount ? `, ${crossProjectNodeText(node.crossCount)}` : '')
     + (node.unknownReasons ? `, ${node.unknownReasons}` : '')
     + `${node.running ? `, đang ${node.phase}` : ''}, ${action}`;
 }
@@ -146,13 +148,14 @@ function draw(reset = false) {
       const label = shape('text', { 'text-anchor': 'middle', y: 4 });
       const subtitle = shape('text', { 'text-anchor': 'middle', y: 23, class: 'map-subtitle' });
       const mark = shape('text', { 'text-anchor': 'middle', y: 5, class: 'map-error-mark' });
+      const crossMark = shape('path', { class: 'map-cross-mark', 'aria-hidden': 'true' });
       const phaseLabel = shape('text', { 'text-anchor': 'middle', class: 'map-subtitle map-phase' });
       const badge = shape('g', { class: 'map-running-badge', 'aria-hidden': 'true' });
       badge.append(shape('rect', { x: -58, y: -12, width: 116, height: 24, rx: 12 }),
         shape('circle', { cx: -46, r: 3, class: 'map-badge-dot' }),
         shape('text', { 'text-anchor': 'middle', x: 5, y: 4 }));
-      group.append(title, circle, label, subtitle, phaseLabel, mark, badge);
-      item = { group, circle, title, label, subtitle, phaseLabel, mark, badge, node };
+      group.append(title, circle, crossMark, label, subtitle, phaseLabel, mark, badge);
+      item = { group, circle, crossMark, title, label, subtitle, phaseLabel, mark, badge, node };
       group.addEventListener('click', () => activate(item.node));
       group.addEventListener('keydown', event => {
         if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(item.node); }
@@ -165,8 +168,14 @@ function draw(reset = false) {
     const status = node.run?.running ? 'running' : node.run?.status || '';
     const estimated = node.run?.endEstimated ? ' estimated' : '';
     const working = node.running > 0;
-    item.group.setAttribute('class', `map-node map-${node.type} ${status}${estimated}${working ? ' activity-working' : ''}${node.delegating ? ' activity-delegating' : ''}${node.type === 'root' && node.delegating && wave ? ` root-wave-${wave}` : ''}`);
+    const isCross = node.type === 'run' && Boolean(node.run?.crossProject);
+    item.group.setAttribute('class', `map-node map-${node.type} ${status}${estimated}${isCross ? ' cross-project' : ''}${working ? ' activity-working' : ''}${node.delegating ? ' activity-delegating' : ''}${node.type === 'root' && node.delegating && wave ? ` root-wave-${wave}` : ''}`);
     item.group.setAttribute('style', `--lane:${laneColor(node.lane)};--activity-color:color-mix(in srgb,${laneColor(node.lane)} 80%,var(--text))`);
+    item.crossMark.setAttribute('display', isCross ? 'inline' : 'none');
+    if (isCross) {
+      const r = node.r;
+      item.crossMark.setAttribute('d', `M${-r - 7} ${-r + 2} L${-r - 1} ${-r + 2} L${-r - 1} ${-r - 1} L${-r + 3} ${-r + 3.5} L${-r - 1} ${-r + 8} L${-r - 1} ${-r + 5} L${-r - 7} ${-r + 5} Z`);
+    }
     if ((working && ['lane', 'run'].includes(node.type)) || (node.type === 'root' && node.delegating && wave)) halos(item, node.r, laneColor(node.lane));
     item.badge.setAttribute('transform', `translate(0 ${-node.r - 18})`);
     item.badge.setAttribute('display', node.type === 'lane' && working ? 'inline' : 'none');

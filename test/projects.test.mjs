@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Scanner } from '../lib/scanner.mjs';
-import { projectCatalog, resolveProject, scratchpadSession } from '../lib/projects.mjs';
+import { executionDirectory, projectCatalog, resolveCrossProject, resolveProject, scratchpadSession } from '../lib/projects.mjs';
 
 test('Projects tổng hợp suy gốc từ nhiều phiên, trùng nhãn và khớp tiền tố dài nhất', async t => {
   const cache = path.resolve('.cache');
@@ -134,4 +134,108 @@ test('Dự án ngoài Claude chỉ tạo từ thư mục thật, giữ tiền t�
     'cwd không khớp thư mục nào');
   const file = path.join(dir, 'tệp.txt'); await writeFile(file, 'Dữ liệu tổng hợp');
   assert.equal(resolveProject({ project: file }, []).projectKey, '(không rõ)');
+});
+
+test('Giao chéo dự án nhận diện đúng chéo, cùng dự án, thư mục con, thư mục tạm và ngoài Claude', async t => {
+  const cache = path.resolve('.cache'); await mkdir(cache, { recursive: true });
+  const outsideDir = await mkdtemp(path.join(cache, 'ngoài-Claude-chéo-'));
+  t.after(async () => { assert.ok(outsideDir.startsWith(cache + path.sep)); await rm(outsideDir, { recursive: true }); });
+  const catalog = [
+    { projectKey: 'd--Workspace-DuAn-A', projectPath: 'D:/Workspace/DuAn_A', projectLabel: 'DuAn_A' },
+    { projectKey: 'd--Workspace-DuAn-B', projectPath: 'D:/Workspace/DuAn_B', projectLabel: 'DuAn_B' },
+  ];
+  const baseA = {
+    projectKey: 'd--Workspace-DuAn-A', projectLabel: 'DuAn_A',
+    projectPath: 'D:/Workspace/DuAn_A', outsideClaude: false,
+  };
+  const crossAgy = resolveCrossProject({
+    ...baseA, lane: 'Argon', source: 'agy-db', claudeSession: 'phiên-a', workspace: 'D:/Workspace/DuAn_B/gói-con',
+  }, catalog);
+  assert.deepEqual(crossAgy, {
+    crossProject: true,
+    eligible: true,
+    workProjectKey: 'd--Workspace-DuAn-B',
+    workProjectLabel: 'DuAn_B',
+    workProjectPath: 'D:/Workspace/DuAn_B',
+    workProjectOutsideClaude: false,
+  });
+  const crossOutside = resolveCrossProject({
+    ...baseA, lane: 'Codex', source: 'codex-rollout', claudeSession: 'phiên-a', project: outsideDir,
+  }, catalog);
+  assert.equal(crossOutside.crossProject, true);
+  assert.equal(crossOutside.workProjectOutsideClaude, true);
+  assert.equal(crossOutside.workProjectLabel, path.basename(outsideDir));
+  for (const sameOrInvalid of [
+    { ...baseA, lane: 'Opus', source: 'agy-db', workspace: 'D:/Workspace/DuAn_A/thư-mục-con' },
+    { ...baseA, lane: 'Codex', source: 'codex-rollout', project: 'C:/Users/nguoidung/AppData/Local/Temp/claude/scratchpad' },
+    { ...baseA, lane: 'Codex', source: 'codex-rollout', project: path.join(os.homedir(), '.claude').replace(/\\/g, '/') },
+    { ...baseA, lane: 'Argon', source: 'agy-db', workspace: 'D:/Không-tồn-tại/DuAn_Lạ' },
+    { ...baseA, lane: 'Argon', source: 'claude-tool', project: 'D:/Workspace/DuAn_B', commandProject: '' },
+    {
+      projectKey: 'd--Workspace-DuAn-B', projectLabel: 'DuAn_B', projectPath: 'D:/Workspace/DuAn_B',
+      lane: 'Argon', source: 'agy-db', workspace: 'D:/Workspace/DuAn_B/con',
+    },
+  ]) {
+    const result = resolveCrossProject(sameOrInvalid, catalog);
+    assert.equal(result.crossProject, false);
+    assert.equal('workProjectKey' in result, false);
+    assert.equal('workProjectLabel' in result, false);
+    assert.equal('workProjectPath' in result, false);
+    assert.equal('workProjectOutsideClaude' in result, false);
+  }
+  assert.equal(executionDirectory({ source: 'claude-tool', project: 'D:/Workspace/DuAn_B', commandProject: '' }), '');
+  assert.equal(executionDirectory({ source: 'claude-tool', commandProject: 'D:/Workspace/DuAn_B' }), 'D:/Workspace/DuAn_B');
+});
+
+test('Scanner gắn trường giao chéo dự án cho runs, state và thống kê mà không đổi trường dự án gốc', async t => {
+  const cache = path.resolve('.cache'); await mkdir(cache, { recursive: true });
+  const root = await mkdtemp(path.join(cache, 'quét-giao-chéo-'));
+  t.after(async () => { assert.ok(root.startsWith(cache + path.sep)); await rm(root, { recursive: true }); });
+  const projects = path.join(root, 'projects'), codex = path.join(root, 'codex');
+  await mkdir(path.join(projects, 'd--Workspace-DuAn-A'), { recursive: true });
+  await mkdir(path.join(projects, 'd--Workspace-DuAn-B'), { recursive: true });
+  await mkdir(codex, { recursive: true });
+  await writeFile(path.join(projects, 'd--Workspace-DuAn-B', 'b.jsonl'), JSON.stringify({
+    type: 'user', cwd: 'D:/Workspace/DuAn_B', sessionId: 'phiên-b', timestamp: '2026-11-07T00:00:00Z',
+    message: { content: 'Khởi tạo DuAn_B tổng hợp' },
+  }) + '\n');
+  await writeFile(path.join(projects, 'd--Workspace-DuAn-A', 'a.jsonl'), [
+    {
+      type: 'assistant', cwd: 'D:/Workspace/DuAn_A', sessionId: 'phiên-a', timestamp: '2026-11-07T00:01:00Z',
+      message: { content: [{ type: 'tool_use', id: 'giao-chéo', name: 'Bash', input: {
+        command: 'codex exec -C D:/Workspace/DuAn_B "Kiểm tra chéo tổng hợp"',
+      } }] },
+    },
+    {
+      type: 'assistant', cwd: 'D:/Workspace/DuAn_B', sessionId: 'phiên-a', timestamp: '2026-11-07T00:02:00Z',
+      message: { content: [{ type: 'tool_use', id: 'không-cờ-c', name: 'Bash', input: {
+        command: 'agy chat -m gemini-4-argon-high --mode agent --print "Chạy không cờ C tổng hợp"',
+      } }] },
+    },
+  ].map(item => JSON.stringify(item)).join('\n') + '\n');
+  const scanner = new Scanner({ claude: projects, codex });
+  t.after(() => scanner.stop());
+  await scanner.refresh(true);
+  const runs = scanner.runs(0, Date.now() + 86400_000);
+  const crossRun = runs.find(run => run.lane === 'Codex');
+  assert.equal(crossRun.projectKey, 'd--Workspace-DuAn-A');
+  assert.equal(crossRun.projectLabel, 'DuAn_A');
+  assert.equal(crossRun.crossProject, true);
+  assert.equal(crossRun.workProjectKey, 'd--Workspace-DuAn-B');
+  assert.equal(crossRun.workProjectLabel, 'DuAn_B');
+  assert.equal(crossRun.workProjectPath, 'D:/Workspace/DuAn_B');
+  assert.equal(crossRun.workProjectOutsideClaude, false);
+  assert.equal('commandProject' in crossRun, false);
+  assert.equal('eligible' in crossRun, false);
+  const noFlagRun = runs.find(run => run.lane === 'Argon');
+  assert.equal(noFlagRun.crossProject, false);
+  assert.equal('workProjectKey' in noFlagRun, false);
+  const state = scanner.state();
+  const codexLane = state.lanes.find(lane => lane.lane === 'Codex');
+  assert.equal(codexLane.crossProject, true);
+  assert.equal(codexLane.workProjectLabel, 'DuAn_B');
+  const argonLane = state.lanes.find(lane => lane.lane === 'Argon');
+  assert.equal(argonLane.crossProject, false);
+  assert.equal('workProjectLabel' in argonLane, false);
+  assert.deepEqual(state.scan.statistics.crossProjects, { count: 1, total: 1 });
 });

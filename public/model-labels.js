@@ -57,3 +57,78 @@ export function modelPrefix(raw) {
   const prefix = { sonnet: 'S', opus: 'O', haiku: 'H' }[label.family];
   return prefix ? `${prefix} ${label.version}` : label.name;
 }
+
+export const CROSS_PROJECT_LEGEND = 'Mũi tên nhỏ = giao chéo sang dự án khác';
+export const CROSS_FILTER_OPTIONS = Object.freeze([
+  { value: '', label: 'Tất cả' },
+  { value: 'cross', label: 'Chỉ giao chéo' },
+  { value: 'same', label: 'Không giao chéo' },
+]);
+
+// Đường dẫn Windows hiển thị bằng dấu gạch chéo ngược, đồng nhất với "Thư mục dự án" ở panel chi tiết.
+function displayPath(value) {
+  const text = String(value || '');
+  return /^[A-Za-z]:[\\/]/.test(text) ? text.replace(/\//g, '\\') : text;
+}
+
+export function workProjectDisplay(run) {
+  if (!run?.crossProject || !run.workProjectLabel) return '';
+  return `${run.workProjectLabel}${run.workProjectOutsideClaude ? ' (ngoài Claude)' : ''}`;
+}
+
+export function crossProjectLabel(run) {
+  if (!run?.crossProject) return '';
+  const from = run.projectLabel || run.projectKey || 'Không rõ dự án';
+  const to = workProjectDisplay(run);
+  return to ? `Giao từ ${from}, làm việc ở ${to}` : '';
+}
+
+export function crossProjectCardText(run) {
+  if (!run?.crossProject) return run?.projectLabel || '';
+  const from = run.projectLabel || run.projectKey || 'Không rõ dự án';
+  const to = workProjectDisplay(run);
+  return `${from} → ${to}`;
+}
+
+export function crossProjectCardTitle(run) {
+  if (!run?.crossProject) return run?.unknownReason || run?.projectLabel || '';
+  return `${crossProjectLabel(run)}${run.workProjectPath ? ` (${displayPath(run.workProjectPath)})` : ''}`;
+}
+
+export function crossProjectDetailText(run) {
+  if (!run?.crossProject) return '';
+  const from = run.projectLabel || run.projectKey || 'Không rõ dự án';
+  const to = workProjectDisplay(run);
+  const pathSuffix = run.workProjectPath ? ` (${displayPath(run.workProjectPath)})` : '';
+  return `Phiên Claude ở dự án ${from} giao việc cho ${modelText(run)} làm việc ở dự án ${to}${pathSuffix}`;
+}
+
+export function crossProjectBarText(run) {
+  if (!run?.crossProject) return '';
+  return `giao chéo sang dự án ${workProjectDisplay(run)}`;
+}
+
+export function crossProjectLeafText(run) {
+  if (!run?.crossProject) return '';
+  return `giao chéo: làm việc ở dự án ${workProjectDisplay(run)}`;
+}
+
+export function crossProjectNodeText(count) {
+  return count > 0 ? `${count} lần giao chéo sang dự án khác` : '';
+}
+
+export function crossProjectFooterText(stats) {
+  if (!stats || typeof stats !== 'object') return '';
+  const count = stats.count ?? stats.cross ?? stats.crossProject;
+  const total = stats.total ?? stats.eligible ?? stats.crossProjectTotal;
+  if (count == null || total == null) return '';
+  return `Giao chéo dự án: ${count}/${total} lần giao`;
+}
+
+export function matchesCrossFilter(run, filterValue = '') {
+  const value = String(filterValue || '').trim();
+  if (!value || value === 'all' || value === 'Tất cả') return true;
+  if (value === 'cross' || value === 'only' || value === 'true' || value === 'Chỉ giao chéo') return Boolean(run?.crossProject);
+  if (value === 'same' || value === 'none' || value === 'false' || value === 'Không giao chéo') return !run?.crossProject;
+  return true;
+}

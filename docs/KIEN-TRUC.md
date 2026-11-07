@@ -45,8 +45,8 @@ Mọi nguồn chỉ đọc. Chỉ mục nằm trong bộ nhớ; khởi động l
 
 Chỉ có `GET`:
 
-- `/api/state`: trạng thái bốn làn, tiến độ quét, cấu hình Codex hiện tại.
-- `/api/runs?from=ISO&to=ISO`: các lần giao việc và đoạn hoạt động trong khoảng; lời nhắc đã che.
+- `/api/state`: trạng thái bốn làn, tiến độ quét (kèm thống kê, gồm `crossProjects`), cấu hình Codex hiện tại.
+- `/api/runs?from=ISO&to=ISO`: các lần giao việc và đoạn hoạt động trong khoảng; lời nhắc đã che; có cờ `crossProject` và các trường `workProject*` khi giao chéo dự án.
 - `/events`: SSE đẩy trạng thái mỗi khi đổi, nhịp tim mỗi 15 giây.
 
 Mã làn nội bộ là `Claude`, `Codex`, `Opus`, `Argon`; tên hiển thị ("Claude Code", "Antigravity Opus", "Gemini Argon") chỉ tồn tại ở giao diện (`public/model-labels.js`). Trạng thái "giao/làm" (`public/activity.js`) là dẫn xuất phía giao diện, không nằm trong dữ liệu quét.

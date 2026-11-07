@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import * as modelLabels from '../public/model-labels.js';
+import * as crossProject from '../public/model-labels.js';
 import * as activity from '../public/activity.js';
 
 const script = (await readFile(new URL('../public/app.js', import.meta.url), 'utf8')).replace(/^import .*\r?\n/gm, '');
@@ -274,4 +275,113 @@ test('Thanh, nhãn làn và thẻ nói rõ giao hay làm, có chấm tại bây 
   assert.equal(ui.ids.get('chart').querySelectorAll('.run-bar').find(node => node.dataset.id === 'vừa-giao').querySelectorAll('.activity-phase')[0].textContent, 'đang làm');
   assert.match(ui.evaluate("cardElements.get('Codex').elapsed.textContent"), /Đang làm: 46 giây/);
   assert.equal(ui.evaluate("cardElements.get('Codex').badgePhase.textContent"), 'đang làm');
+});
+
+test('Giao chéo dự án dùng chung hàm nhãn và hiển thị ở thẻ, chi tiết, thanh, chú giải, bộ lọc và chân trang', () => {
+  const crossSample = {
+    id: 'chéo-rộng', lane: 'Argon', model: 'gemini-4-argon-high', kind: 'giao việc',
+    projectKey: 'd--Workspace-DuAn-A', projectLabel: 'DuAn_A', projectPath: 'D:/Workspace/DuAn_A',
+    crossProject: true, workProjectKey: 'd--Workspace-DuAn-B', workProjectLabel: 'DuAn_B',
+    workProjectPath: 'D:/Workspace/DuAn_B', workProjectOutsideClaude: false,
+  };
+  assert.equal(crossProject.crossProjectLabel(crossSample), 'Giao từ DuAn_A, làm việc ở DuAn_B');
+  assert.equal(crossProject.crossProjectCardText(crossSample), 'DuAn_A → DuAn_B');
+  assert.equal(crossProject.crossProjectCardTitle(crossSample), 'Giao từ DuAn_A, làm việc ở DuAn_B (D:\\Workspace\\DuAn_B)');
+  assert.equal(
+    crossProject.crossProjectDetailText({ ...crossSample, workProjectOutsideClaude: true }),
+    'Phiên Claude ở dự án DuAn_A giao việc cho Gemini Argon · high làm việc ở dự án DuAn_B (ngoài Claude) (D:\\Workspace\\DuAn_B)',
+  );
+  assert.equal(crossProject.crossProjectBarText(crossSample), 'giao chéo sang dự án DuAn_B');
+  assert.equal(crossProject.crossProjectLeafText(crossSample), 'giao chéo: làm việc ở dự án DuAn_B');
+  assert.equal(crossProject.crossProjectNodeText(3), '3 lần giao chéo sang dự án khác');
+  assert.equal(crossProject.crossProjectFooterText({ count: 5, total: 20 }), 'Giao chéo dự án: 5/20 lần giao');
+  assert.match(html, /id="legend-cross"[\s\S]*?cross-project-mark[\s\S]*?Mũi tên nhỏ = giao chéo sang dự án khác/);
+  assert.match(html, /id="mindmap-legend-cross"[\s\S]*?map-cross-mark[\s\S]*?Mũi tên nhỏ = giao chéo sang dự án khác/);
+
+  const ui = board();
+  ui.evaluate(`
+    window.boardMindmap = { update(filtered, detail, key, claude) { window.mapFiltered = filtered; window.mapClaude = claude; window.mapKey = key; } };
+    hours = 1; end = Date.now();
+    runs = [
+      {
+        id: 'chéo-đang-chạy', lane: 'Argon', model: 'gemini-4-argon-high', kind: 'giao việc', running: true,
+        start: end - 1800_000, end: null, prompt: 'Làm việc ở dự án B tổng hợp',
+        projectKey: 'd--Workspace-DuAn-A', projectLabel: 'DuAn_A', projectPath: 'D:/Workspace/DuAn_A',
+        crossProject: true, workProjectKey: 'd--Workspace-DuAn-B', workProjectLabel: 'DuAn_B',
+        workProjectPath: 'D:/Workspace/DuAn_B', workProjectOutsideClaude: false,
+      },
+      {
+        id: 'chéo-hẹp', lane: 'Opus', model: 'claude-opus-5-5-high', kind: 'giao việc', running: false, status: 'ok',
+        start: end - 600_000, end: end - 595_000, prompt: 'Thanh hẹp giao chéo tổng hợp',
+        projectKey: 'd--Workspace-DuAn-A', projectLabel: 'DuAn_A', projectPath: 'D:/Workspace/DuAn_A',
+        crossProject: true, workProjectKey: 'ngoài-claude:d:/ngoài', workProjectLabel: 'DuAn_Ngoai',
+        workProjectPath: 'D:/Ngoài', workProjectOutsideClaude: true,
+      },
+      {
+        id: 'cùng-dự-án', lane: 'Codex', model: 'gpt-6.1-codex', kind: 'giao việc', running: false, status: 'ok',
+        start: end - 1200_000, end: end - 600_000, prompt: 'Cùng dự án A tổng hợp',
+        projectKey: 'd--Workspace-DuAn-A', projectLabel: 'DuAn_A', projectPath: 'D:/Workspace/DuAn_A',
+        crossProject: false,
+      },
+    ];
+    state = {
+      lanes: [
+        { ...runs[0], state: 'Đang chạy', activeCount: 1, knownModel: runs[0].model },
+        { ...runs[2], state: 'Rảnh', activeCount: 0, knownModel: runs[2].model },
+      ],
+      scan: {
+        initial: false, scannedFiles: 10, totalFiles: 10, durationMs: 100, warnings: [],
+        statistics: {
+          projects: { known: 3, total: 3, outsideClaude: 0 },
+          crossProjects: { count: 2, total: 3 },
+        },
+      },
+    };
+    renderState(); renderChart(); showDetails(runs[0]);
+  `);
+  assert.equal(ui.evaluate("cardElements.get('Argon').project.textContent"), 'DuAn_A → DuAn_B');
+  assert.equal(ui.evaluate("cardElements.get('Argon').project.title"), 'Giao từ DuAn_A, làm việc ở DuAn_B (D:\\Workspace\\DuAn_B)');
+  assert.ok(ui.evaluate("cardElements.get('Argon').project.classList.contains('cross-project')"));
+  assert.equal(ui.evaluate("cardElements.get('Codex').project.textContent"), 'DuAn_A');
+  assert.equal(ui.evaluate("cardElements.get('Codex').project.classList.contains('cross-project')"), false);
+  assert.match(ui.ids.get('scan-footer').textContent, /Giao chéo dự án: 2\/3 lần giao/);
+
+  const detailFields = ui.ids.get('detail-fields').children;
+  const crossField = detailFields.find(item => item.children[0].textContent === 'Giao chéo dự án');
+  assert.ok(crossField);
+  assert.match(crossField.children[1].textContent, /Phiên Claude ở dự án DuAn_A giao việc cho .* làm việc ở dự án DuAn_B \(D:\\Workspace\\DuAn_B\)/);
+  assert.equal(detailFields.find(item => item.children[0].textContent === 'Dự án').children[1].textContent, 'DuAn_A');
+  ui.evaluate('showDetails(runs[2]);');
+  assert.equal(ui.ids.get('detail-fields').children.find(item => item.children[0].textContent === 'Giao chéo dự án'), undefined);
+
+  const bars = ui.ids.get('chart').querySelectorAll('.run-bar');
+  const runningCrossBar = bars.find(bar => bar.dataset.id === 'chéo-đang-chạy');
+  assert.ok(runningCrossBar.classList.contains('cross-project'));
+  assert.equal(runningCrossBar.querySelectorAll('.cross-project-mark').length, 1);
+  assert.equal(runningCrossBar.querySelectorAll('.run-now-dot').length, 1);
+  assert.equal(runningCrossBar.querySelectorAll('.activity-phase').length, 1);
+  assert.match(runningCrossBar.title, /giao chéo sang dự án DuAn_B/);
+  assert.match(runningCrossBar.attributes['aria-label'], /giao chéo sang dự án DuAn_B/);
+
+  const narrowCrossBar = bars.find(bar => bar.dataset.id === 'chéo-hẹp');
+  assert.ok(narrowCrossBar.classList.contains('narrow'));
+  assert.ok(narrowCrossBar.classList.contains('cross-project'));
+  assert.equal(narrowCrossBar.textContent, '');
+  assert.equal(narrowCrossBar.querySelectorAll('.cross-project-mark').length, 1);
+  assert.match(narrowCrossBar.title, /giao chéo sang dự án DuAn_Ngoai \(ngoài Claude\)/);
+
+  const sameBar = bars.find(bar => bar.dataset.id === 'cùng-dự-án');
+  assert.equal(sameBar.classList.contains('cross-project'), false);
+  assert.equal(sameBar.querySelectorAll('.cross-project-mark').length, 0);
+
+  const crossFilter = ui.ids.get('cross-filter');
+  assert.deepEqual(crossFilter.children.map(node => node.textContent), ['Tất cả', 'Chỉ giao chéo', 'Không giao chéo']);
+  crossFilter.value = 'cross'; crossFilter.listeners.change();
+  assert.deepEqual(ui.ids.get('chart').querySelectorAll('.run-bar').map(bar => bar.dataset.id).sort(), ['chéo-hẹp', 'chéo-đang-chạy']);
+  assert.equal(ui.evaluate('window.mapFiltered.length'), 2);
+  assert.match(ui.evaluate('window.mapKey'), /:cross$/);
+  crossFilter.value = 'same'; crossFilter.listeners.change();
+  assert.deepEqual(ui.ids.get('chart').querySelectorAll('.run-bar').map(bar => bar.dataset.id), ['cùng-dự-án']);
+  assert.equal(ui.evaluate('window.mapFiltered.length'), 1);
+  assert.match(ui.evaluate('window.mapKey'), /:same$/);
 });

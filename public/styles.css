@@ -1013,6 +1013,61 @@ footer p {
 .card.activity-working::before { content:''; position:absolute; top:-3px; left:8px; right:8px; height:3px; background:var(--text); animation:activity-blink 1.6s ease-in-out infinite; pointer-events:none; }
 [data-motion-paused=true] *,[data-motion-paused=true] *::before,[data-motion-paused=true] *::after { animation-play-state:paused!important; }
 
+/* Dấu hiệu giao chéo dự án trên dòng thời gian, sơ đồ và chú giải. */
+.cross-project-mark {
+  position:absolute;
+  left:3px;
+  top:50%;
+  width:8px;
+  height:8px;
+  transform:translateY(-50%);
+  background:currentColor;
+  clip-path:polygon(0 28%,55% 28%,55% 0,100% 50%,55% 100%,55% 72%,0 72%);
+  pointer-events:none
+}
+
+.run-bar.cross-project {
+  padding-left:14px
+}
+
+.run-bar.narrow.cross-project {
+  padding:0
+}
+
+.run-bar.narrow .cross-project-mark {
+  left:1px;
+  width:7px;
+  height:7px
+}
+
+.run-bar.narrow.running.cross-project .cross-project-mark {
+  left:0;
+  width:5px;
+  height:5px
+}
+
+.sample.cross-project {
+  position:relative
+}
+
+.sample.cross-project .cross-project-mark {
+  left:2px;
+  color:var(--bg)
+}
+
+.map-cross-mark {
+  display:none;
+  fill:var(--text);
+  stroke:var(--bg);
+  stroke-width:1;
+  pointer-events:none
+}
+
+.map-node.cross-project > .map-cross-mark,
+.mindmap-legend .map-cross-mark {
+  display:inline
+}
+
 @media(prefers-reduced-motion:reduce) {
   *,*::before,*::after { animation:none!important; }
   .map-lane.activity-working .map-halo,.map-run.activity-working .map-halo {

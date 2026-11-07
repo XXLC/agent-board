@@ -61,6 +61,16 @@ Mỗi run và mỗi làn có `projectKey`, `projectLabel`, `projectPath`. Khi ag
 
 **34 trường hợp làm việc ở dự án khác là giao việc chéo dự án, không phải ghép nhầm** (người dùng xác nhận ngày 08/11/2026: một phiên Claude ở dự án này giao agy làm việc ở thư mục của dự án khác). Vì vậy `projectKey` của một lần giao luôn là dự án của **phiên Claude giao việc**, còn thư mục làm việc của agy (`workspace`) cho biết việc thực sự diễn ra ở đâu; hai giá trị khác nhau là bình thường, đừng "sửa" cho khớp và đừng coi sự khác biệt là dấu hiệu ghép sai. Điều này cũng có nghĩa không thể dùng độ khớp giữa hai thư mục để kiểm tra chất lượng ghép lệnh với hội thoại; kiểm chất lượng ghép bằng model, giờ bắt đầu và lời nhắc (90 trên 150 cặp có lời nhắc ở cả hai nguồn khớp hoàn toàn sau che và cắt).
 
+## Giao chéo dự án
+
+Giao chéo dự án là khi phiên Claude ở dự án A giao agy hoặc Codex làm việc ở thư mục của dự án B. Giao diện thể hiện rõ điều này (xem [GIAO-DIEN.md](GIAO-DIEN.md)).
+
+- **Thư mục thực thi** của một run: `workspace` của hội thoại agy; `cwd` của rollout Codex; với lệnh `claude-tool` chưa ghép thì thư mục đích do bộ phân tích lệnh trích ra (ví dụ `-C <thư mục>`), chỉ khi nó khác cwd của phiên Claude.
+- Thư mục thực thi được giải thành dự án bằng đúng hàm xác định dự án ở trên (không có logic suy dự án song song).
+- `crossProject` là true khi **cả hai** dự án (của lần giao và của thư mục thực thi) đều đã biết và khác nhau. Không tính là chéo: thư mục tạm hoặc scratchpad của phiên, `~/.claude`, dự án không rõ, phiên tương tác Codex và đoạn hoạt động Claude. Run mà dự án được suy ra từ chính thư mục thực thi (agy hoặc Codex độc lập) thì hai khóa trùng nên không chéo.
+- Chỉ khi `crossProject` là true run mới có `workProjectKey`, `workProjectLabel`, `workProjectPath`, `workProjectOutsideClaude`. Các trường này được tính ở lớp xuất (`runs()`, `state()`), không nằm trong dữ liệu quét nên không đổi hash kiểm hồi quy. `scan.statistics.crossProjects` có `{count, total}` với `total` là số lần giao đủ thông tin để xét.
+- Số liệu mẫu ngày 08/11/2026: 112 trên 663 lần giao đủ thông tin là chéo (Codex 77, Gemini Argon 29, Antigravity Opus 6; theo nguồn: rollout Codex 67, hội thoại agy 35, lệnh có `-C` 10). Trong đó 34 hội thoại agy đã ghép với lệnh Claude khớp đúng 34 trường hợp được người dùng xác nhận là giao chéo.
+
 ## Model và làn
 
 Làn là vai trò, model là sự thật. Làn "Gemini Argon" có cả `gemini-*-flash*`, làn "Antigravity Opus" có cả `claude-sonnet-*`. `modelLabel(id)` đổi id thô thành tên đọc được ("Opus 5.5 · high", "Gemini Argon · high", "Gemini 3.5 Flash Lite"); id Codex (`gpt-*`) giữ nguyên, id lạ giữ nguyên, rỗng là "Chưa rõ model". Hậu tố `-low|-medium|-high` là mức suy luận. Model lệch tên làn được đánh dấu `offLabel`.

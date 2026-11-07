@@ -9,6 +9,7 @@ Trang web chạy ở `http://127.0.0.1:8090`, chỉ đọc dữ liệu có sẵn
 - **Thẻ trạng thái** cho từng làn: đang chạy hay rảnh, model và mức suy luận, việc đang làm, dự án, "Vừa giao N giây trước" hoặc "Đang làm: ...". Thẻ Codex có thêm dòng "Cấu hình hiện tại".
 - **Dòng thời gian**: mỗi làn một hàng, mỗi lần giao việc là một thanh (thành công, lỗi, hết quota, đang chạy, chưa rõ phân biệt bằng hoa văn chứ không chỉ bằng màu). Khoảng 6 giờ, 24 giờ, 7 ngày, 30 ngày; lọc theo làn, model, dự án.
 - **Sơ đồ** kiểu mindmap tỏa tròn: Claude ở giữa, ba nhánh Codex, Antigravity Opus, Gemini Argon, rồi dự án, rồi từng lần giao. Việc đang giao có nét đứt chạy và hạt chạy dọc cạnh; việc đang làm có vòng tròn lan tỏa nhấp nháy.
+- **Giao chéo dự án**: khi Claude ở dự án A giao việc cho model làm việc ở dự án B, thẻ ghi "A → B", thanh và lá có mũi tên nhỏ, panel chi tiết nêu rõ cả hai dự án, và có bộ lọc riêng.
 - Cập nhật trực tiếp qua SSE, giao diện sáng/tối, hỗ trợ giảm chuyển động và bàn phím, dùng được trên màn hình hẹp.
 
 Chi tiết từng phần ở [docs/GIAO-DIEN.md](docs/GIAO-DIEN.md).

@@ -30,6 +30,16 @@ SVG thuần, mọi kích thước tính trong JS. Gốc "Claude Code" ở giữa
 - Hàm bố cục `layoutMindmap(runs, options)` ở `public/mindmap-layout.js` là hàm thuần, nhập được từ Node để test (có `now` để đo lặp lại, `previous` để giữ vị trí cũ). Cập nhật SSE chỉ đổi thuộc tính phần tử đã có và thêm hoặc bỏ nút khi tập hiển thị đổi; vị trí, pan/zoom và trạng thái mở rộng được giữ nguyên. Tab Sơ đồ ẩn thì không tính bố cục và không vẽ; chuyển sang tab thì vẽ ngay.
 - Chọn tab bằng `#dong-thoi-gian` hoặc `#so-do`. Hai tab dùng chung khoảng thời gian, bộ lọc làn, model, dự án.
 
+## Giao chéo dự án
+
+Khi phiên Claude ở dự án A giao việc cho model làm việc ở thư mục của dự án B (cách xác định ở [NGUON-DU-LIEU.md](NGUON-DU-LIEU.md)), giao diện nói rõ cả hai dự án. Nhãn dùng chung một bộ hàm thuần trong `public/model-labels.js` (`crossProjectLabel`, `crossProjectCardText`, `crossProjectDetailText`...), không lặp chuỗi ở nhiều nơi, mỗi câu nêu thông tin một lần.
+
+- **Thẻ trạng thái**: dòng dự án hiện "A → B" khi lần giao gần nhất của làn là chéo; `title` ghi "Giao từ A, làm việc ở B" kèm đường dẫn.
+- **Panel chi tiết**: dòng "Giao chéo dự án" ("Phiên Claude ở dự án A giao việc cho `model` làm việc ở dự án B (đường dẫn)"). Dòng "Dự án" vẫn là dự án của phiên giao việc.
+- **Dòng thời gian**: thanh giao chéo có mũi tên nhỏ ở đầu trái (dùng `currentColor` nên đủ tương phản trên cả thanh nền sáng lẫn tối, không dựa vào màu của làn); `title` và `aria-label` ghi "giao chéo sang dự án B". Thanh hẹp vẫn có dấu, không có chữ.
+- **Sơ đồ**: lá giao chéo có dấu mũi tên riêng; tooltip và `aria-label` ghi "giao chéo: làm việc ở dự án B"; tooltip nút dự án nêu "N lần giao chéo sang dự án khác". Cây không đổi cấu trúc: lá vẫn nằm dưới dự án của phiên giao việc, và cập nhật SSE không dựng lại nút hay làm nhảy bố cục.
+- **Bộ lọc "Giao chéo"** (Tất cả, Chỉ giao chéo, Không giao chéo) dùng chung cho dòng thời gian và sơ đồ; chú giải "Mũi tên nhỏ = giao chéo sang dự án khác" ở cả hai tab; chân trang ghi "Giao chéo dự án: X/Y lần giao".
+
 ## Đang giao và đang làm
 
 `activityPhase(run, now)` ở `public/activity.js` (dẫn xuất phía giao diện, không nằm trong dữ liệu quét):
