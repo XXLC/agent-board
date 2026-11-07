@@ -1,5 +1,6 @@
 import { layoutMindmap } from './mindmap-layout.js';
-import { LANE_LABELS, crossProjectLeafText, crossProjectNodeText, modelNote, modelText } from './model-labels.js';
+import { LANE_LABELS, crossProjectActiveText, crossProjectLeafText, crossProjectLinkText, crossProjectNodeText } from './model-labels.js';
+import { isBrowserFullscreen, modelNote, modelText, workProjectDisplay } from './model-labels.js';
 import { activityPhase, activityText } from './activity.js';
 
 const $ = id => document.getElementById(id);
@@ -14,6 +15,19 @@ function shape(tag, attributes = {}, text) {
   if (text !== undefined) node.textContent = text;
   return node;
 }
+function toggleClass(el, name, enabled) {
+  if (!el) return;
+  if (el.classList?.toggle) { el.classList.toggle(name, enabled); return; }
+  const set = new Set(String(el.className || el.attributes?.class || '').split(/\s+/).filter(Boolean));
+  if (enabled) set.add(name); else set.delete(name);
+  const next = [...set].join(' ');
+  el.className = next; el.setAttribute?.('class', next);
+}
+function hasClass(el, name) {
+  if (!el) return false;
+  if (el.classList?.contains) return el.classList.contains(name);
+  return String(el.className || el.attributes?.class || '').split(/\s+/).includes(name);
+}
 const defs = shape('defs');
 for (const lane of ['Codex', 'Opus', 'Argon']) {
   const pattern = shape('pattern', { id: `quota-${lane}`, width: 8, height: 8, patternUnits: 'userSpaceOnUse' });
@@ -22,13 +36,18 @@ for (const lane of ['Codex', 'Opus', 'Argon']) {
   defs.append(pattern);
 }
 const edgeLayer = shape('g', { class: 'map-edges', 'aria-hidden': 'true' });
+const crossLayer = shape('g', { class: 'map-cross-links', 'aria-hidden': 'true', 'pointer-events': 'none' });
 const nodeLayer = shape('g', { class: 'map-nodes' });
-svg.append(defs, edgeLayer, nodeLayer);
-const nodeElements = new Map(), edgeElements = new Map();
+svg.append(defs, edgeLayer, crossLayer, nodeLayer);
+const nodeElements = new Map(), edgeElements = new Map(), crossElements = new Map();
 let layout, currentRuns = [], claudeModels = [], filteredCount = 0, showDetails, scope, view, active = false, drag;
+let userAdjustedView = false, selectedCrossRunId = null;
+let mapOnly = false, mapOnlySource = null, savedTabHash = null, savedScroll = null, legendOpen = false, browserFsDismissed = false;
+let restoredDetails = null, restoredConnection = null;
 const expanded = new Set(), collapsed = new Set();
 const seenDelegations = new Set();
 let wave = 0, edgeSequence = 0;
+if ($('clear-detail') && $('clear-detail').hidden === undefined) $('clear-detail').hidden = true;
 
 function halos(item, radius, color) {
   if (!item.halos) {
@@ -54,11 +73,14 @@ function setView() {
   if (view) svg.setAttribute('viewBox', view.join(' '));
 }
 function center() {
+  if (!layout) return;
+  userAdjustedView = false;
   view = [...layout.bounds];
   setView();
 }
 function zoom(factor, anchorX = .5, anchorY = .5) {
-  if (!view) return;
+  if (!view || !layout) return;
+  userAdjustedView = true;
   const width = Math.min(layout.bounds[2] * 4, Math.max(160, view[2] * factor));
   const ratio = width / view[2];
   view = [view[0] + view[2] * anchorX * (1 - ratio), view[1] + view[3] * anchorY * (1 - ratio), width, view[3] * ratio];
@@ -68,23 +90,34 @@ function activate(node) {
   if (node.type === 'more') expanded.add(node.target);
   else if (node.type === 'lane' || node.type === 'project') {
     if (collapsed.has(node.id)) collapsed.delete(node.id); else collapsed.add(node.id);
+  } else if (node.type === 'run') {
+    selectedCrossRunId = node.run?.crossProject
+      ? (selectedCrossRunId === node.run.id ? null : node.run.id)
+      : null;
   }
   const run = node.type === 'more' ? null : node.run || node.runs?.[0]
     || (node.type === 'root' ? currentRuns.find(run => run.lane === 'Claude') : null);
-  if (run) showDetails(run, true);
+  if (run) {
+    if ($('clear-detail')) $('clear-detail').hidden = false;
+    toggleClass($('details'), 'open', true);
+    showDetails?.(run, true);
+  }
   if (node.type !== 'run' && node.type !== 'root') {
     draw();
     // Nút gộp biến mất sau khi mở; chuyển tiêu điểm về nút cha còn tồn tại.
     if (node.type === 'more') nodeElements.get(node.target)?.group.focus();
+  } else if (node.type === 'run') {
+    updateCrossLinks();
   }
 }
 function description(node, now = Date.now()) {
   if (node.type === 'run') {
     const run = node.run;
     const status = run.running ? activityText(run, now) : statuses[run.status] || 'chưa rõ';
+    const activeCross = run.crossProject && selectedCrossRunId === run.id ? `, ${crossProjectActiveText(run)}` : '';
     return `${LANE_LABELS[run.lane]}, ${modelText(run, true)}, ${run.projectLabel}, ${status}${run.endEstimated ? ', giờ kết thúc ước lượng' : ''}`
       + (modelNote(run) ? `, ${modelNote(run)}` : '')
-      + (run.crossProject ? `, ${crossProjectLeafText(run)}` : '')
+      + (run.crossProject ? `, ${crossProjectLeafText(run)}${activeCross}` : '')
       + `, ${Array.from(run.prompt || '').slice(0, 200).join('')}`
       + (run.promptSource ? `, nguồn lời nhắc: ${run.promptSource}` : '')
       + (run.unknownReason ? `, không rõ dự án vì ${run.unknownReason}` : '');
@@ -95,6 +128,99 @@ function description(node, now = Date.now()) {
     + (node.crossCount ? `, ${crossProjectNodeText(node.crossCount)}` : '')
     + (node.unknownReasons ? `, ${node.unknownReasons}` : '')
     + `${node.running ? `, đang ${node.phase}` : ''}, ${action}`;
+}
+function findTargetProjectNode(leafNode) {
+  const targetKey = leafNode.run?.workProjectKey;
+  if (!targetKey || !layout?.nodes) return null;
+  return layout.nodes.find(n => n.type === 'project' && n.projectKey === targetKey && n.lane === leafNode.lane)
+    || layout.nodes.find(n => n.type === 'project' && n.projectKey === targetKey)
+    || null;
+}
+function arrowPath(cx, cy, x2, y2) {
+  const tx = x2 - cx, ty = y2 - cy, len = Math.hypot(tx, ty) || 1;
+  const ux = tx / len, uy = ty / len, nx = -uy, ny = ux;
+  const bx = x2 - ux * 8, by = y2 - uy * 8;
+  return `M ${bx + nx * 4} ${by + ny * 4} L ${x2} ${y2} L ${bx - nx * 4} ${by - ny * 4} Z`;
+}
+function updateCrossLinks(now = Date.now()) {
+  if (!layout) return;
+  const presentCrossIds = new Set();
+  for (const node of layout.nodes) {
+    if (node.type !== 'run' || !node.run?.crossProject) continue;
+    presentCrossIds.add(node.id);
+    const item = nodeElements.get(node.id);
+    if (item) {
+      const desc = description(node, now);
+      item.group.setAttribute('aria-label', desc);
+      item.group.setAttribute('aria-pressed', String(selectedCrossRunId === node.run.id));
+      item.title.textContent = desc;
+    }
+    const isSelected = selectedCrossRunId === node.run.id;
+    const isRunning = Boolean(node.run.running);
+    if (!isSelected && !isRunning) {
+      const old = crossElements.get(node.id);
+      if (old) old.group.setAttribute('display', 'none');
+      continue;
+    }
+    let link = crossElements.get(node.id);
+    if (!link) {
+      const group = shape('g', { class: 'map-cross-link' });
+      const title = shape('title');
+      const path = shape('path', { class: 'map-cross-path', fill: 'none' });
+      const arrow = shape('path', { class: 'map-cross-arrow' });
+      const tag = shape('g', { class: 'map-cross-tag', display: 'none' });
+      const tagTitle = shape('title');
+      const tagRect = shape('rect', { rx: 6, ry: 6, height: 22, y: -11 });
+      const tagText = shape('text', { 'text-anchor': 'middle', y: 4 });
+      tag.append(tagTitle, tagRect, tagText);
+      group.append(title, path, arrow, tag);
+      crossLayer.append(group);
+      link = { group, title, path, arrow, tag, tagTitle, tagRect, tagText };
+      crossElements.set(node.id, link);
+    }
+    const delegating = isRunning && activityPhase(node.run, now) === 'giao';
+    link.group.setAttribute('display', 'inline');
+    link.group.setAttribute('class', `map-cross-link${isRunning ? ' running activity-working' : ''}${delegating ? ' activity-delegating' : ''}${isSelected ? ' selected' : ''}`);
+    link.group.setAttribute('style', `--lane:${laneColor(node.lane)};--activity-color:color-mix(in srgb,${laneColor(node.lane)} 80%,var(--text))`);
+    link.path.setAttribute('class', `map-cross-path${isRunning ? ' map-flow' : ''}`);
+    const linkTitle = crossProjectLinkText(node.run);
+    link.title.textContent = linkTitle;
+    link.tagTitle.textContent = linkTitle;
+    const target = findTargetProjectNode(node);
+    if (target) {
+      const dx = target.x - node.x, dy = target.y - node.y, dist = Math.hypot(dx, dy) || 1;
+      const ux = dx / dist, uy = dy / dist, nx = -uy, ny = ux;
+      const x1 = node.x + ux * (node.r + 4), y1 = node.y + uy * (node.r + 4);
+      const x2 = target.x - ux * (target.r + 6), y2 = target.y - uy * (target.r + 6);
+      const bend = Math.min(80, Math.max(24, dist * .18));
+      const cx = (x1 + x2) / 2 + nx * bend, cy = (y1 + y2) / 2 + ny * bend;
+      link.path.setAttribute('d', `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`);
+      link.arrow.setAttribute('d', arrowPath(cx, cy, x2, y2));
+      link.tag.setAttribute('display', 'none');
+      link.group.setAttribute('data-target', target.id);
+      link.group.setAttribute('data-mode', 'node');
+    } else {
+      const rad = Math.hypot(node.x, node.y) || 1;
+      const ux = node.x / rad, uy = node.y / rad, nx = -uy, ny = ux;
+      const x1 = node.x + ux * (node.r + 4), y1 = node.y + uy * (node.r + 4);
+      const x2 = x1 + ux * 42 + nx * 12, y2 = y1 + uy * 42 + ny * 12;
+      const cx = (x1 + x2) / 2 + nx * 14, cy = (y1 + y2) / 2 + ny * 14;
+      link.path.setAttribute('d', `M ${x1} ${y1} Q ${cx} ${cy} ${x2} ${y2}`);
+      link.arrow.setAttribute('d', arrowPath(cx, cy, x2, y2));
+      const text = `→ ${workProjectDisplay(node.run) || node.run.workProjectLabel || node.run.workProjectKey || 'Không rõ dự án'}`;
+      link.tagText.textContent = text;
+      const width = Math.max(56, Array.from(text).length * 7 + 16);
+      link.tagRect.setAttribute('x', -width / 2);
+      link.tagRect.setAttribute('width', width);
+      link.tag.setAttribute('transform', `translate(${x2 + ux * (width / 2 + 6)} ${y2 + uy * 14})`);
+      link.tag.setAttribute('display', 'inline');
+      link.group.setAttribute('data-target', '');
+      link.group.setAttribute('data-mode', 'tag');
+    }
+  }
+  for (const [id, item] of crossElements) {
+    if (!presentCrossIds.has(id)) item.group.setAttribute('display', 'none');
+  }
 }
 function draw(reset = false) {
   const now = Date.now();
@@ -160,8 +286,8 @@ function draw(reset = false) {
       group.addEventListener('keydown', event => {
         if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(item.node); }
       });
-      group.addEventListener('pointerenter', () => { if (item.node.run) showDetails(item.node.run); });
-      group.addEventListener('focus', () => { if (item.node.run) showDetails(item.node.run); });
+      group.addEventListener('pointerenter', () => { if (item.node.run && !mapOnly) showDetails(item.node.run); });
+      group.addEventListener('focus', () => { if (item.node.run && !mapOnly) showDetails(item.node.run); });
       nodeElements.set(node.id, item); nodeLayer.append(group);
     }
     item.node = node;
@@ -169,7 +295,11 @@ function draw(reset = false) {
     const estimated = node.run?.endEstimated ? ' estimated' : '';
     const working = node.running > 0;
     const isCross = node.type === 'run' && Boolean(node.run?.crossProject);
-    item.group.setAttribute('class', `map-node map-${node.type} ${status}${estimated}${isCross ? ' cross-project' : ''}${working ? ' activity-working' : ''}${node.delegating ? ' activity-delegating' : ''}${node.type === 'root' && node.delegating && wave ? ` root-wave-${wave}` : ''}`);
+    const isSelectedCross = isCross && selectedCrossRunId === node.run.id;
+    const waveClass = node.type === 'root' && node.delegating && wave ? ` root-wave-${wave}` : '';
+    const nodeClass = `map-node map-${node.type} ${status}${estimated}${isCross ? ' cross-project' : ''}`
+      + `${isSelectedCross ? ' cross-selected' : ''}${working ? ' activity-working' : ''}${node.delegating ? ' activity-delegating' : ''}${waveClass}`;
+    item.group.setAttribute('class', nodeClass);
     item.group.setAttribute('style', `--lane:${laneColor(node.lane)};--activity-color:color-mix(in srgb,${laneColor(node.lane)} 80%,var(--text))`);
     item.crossMark.setAttribute('display', isCross ? 'inline' : 'none');
     if (isCross) {
@@ -207,12 +337,13 @@ function draw(reset = false) {
     item.phaseLabel.setAttribute('y', node.type === 'run' ? node.r + 42 : 23 + 14 * (subtitleLines.length - 1) + 17);
     item.mark.textContent = status === 'error' ? 'X' : '';
   }
+  updateCrossLinks(now);
   $('mindmap-empty').hidden = layout.count > 0;
-  if (!view || reset) center();
+  if (!view || (reset && !userAdjustedView)) center();
   if (active) $('run-count').textContent = `${layout.count} lần giao, ${layout.grouped} lần giao đang gộp`;
 }
 function selectTab() {
-  active = location.hash === '#so-do';
+  active = location.hash === '#so-do' || location.hash === 'so-do';
   $('timeline-view').hidden = active;
   $('mindmap-view').hidden = !active;
   $('tab-timeline').setAttribute('aria-selected', !active);
@@ -222,6 +353,222 @@ function selectTab() {
   if (active && (layout || currentRuns.length)) draw(!layout);
   if (!active) $('run-count').textContent = `${filteredCount} thanh hoạt động`;
 }
+const mapView = $('mindmap-view');
+const mapStage = $('map-stage');
+function fullscreenTarget() {
+  if (typeof mapStage?.requestFullscreen === 'function') return mapStage;
+  if (typeof mapView?.requestFullscreen === 'function') return mapView;
+  return mapStage || mapView;
+}
+function announceMapStatus(message, visibleWarning = false) {
+  const statusEl = $('map-status');
+  if (!statusEl) return;
+  statusEl.textContent = message;
+  toggleClass(statusEl, 'sr-only', !visibleWarning);
+  toggleClass(statusEl, 'map-status-toast', visibleWarning);
+}
+function syncFullscreenControls() {
+  const fsBtn = $('map-fullscreen');
+  if (fsBtn) {
+    fsBtn.textContent = mapOnly ? 'Thoát toàn màn hình' : 'Toàn màn hình';
+    fsBtn.setAttribute('aria-pressed', String(mapOnly));
+    fsBtn.setAttribute('title', mapOnly ? 'Thoát toàn màn hình (F11)' : 'Toàn màn hình chỉ sơ đồ (F11)');
+    fsBtn.setAttribute('aria-label', mapOnly ? 'Thoát toàn màn hình' : 'Toàn màn hình');
+  }
+  const legendBtn = $('map-legend-toggle');
+  if (legendBtn) {
+    legendBtn.hidden = !mapOnly;
+    legendBtn.setAttribute('aria-pressed', String(Boolean(mapOnly && legendOpen)));
+  }
+  const legendEl = $('mindmap-legend');
+  if (legendEl) {
+    legendEl.hidden = mapOnly ? !legendOpen : false;
+    toggleClass(legendEl, 'legend-overlay', Boolean(mapOnly && legendOpen));
+  }
+  const label = mapOnly ? 'Sơ đồ toàn màn hình' : 'Sơ đồ điều phối';
+  if (mapStage) {
+    mapStage.setAttribute('role', 'region');
+    mapStage.setAttribute('aria-label', label);
+  }
+  if (mapView) {
+    mapView.setAttribute('role', mapOnly ? 'region' : 'tabpanel');
+    mapView.setAttribute('aria-label', label);
+  }
+}
+function relocateOverlays(intoStage) {
+  const host = mapStage || mapView;
+  if (typeof host?.appendChild !== 'function') return;
+  const details = $('details');
+  const conn = document.querySelector?.('.connection');
+  if (intoStage) {
+    if (details?.parentNode && details.parentNode !== host && typeof details.parentNode.insertBefore === 'function') {
+      restoredDetails = { parent: details.parentNode, next: details.nextSibling };
+      host.appendChild(details);
+    }
+    if (conn?.parentNode && conn.parentNode !== host && typeof conn.parentNode.insertBefore === 'function') {
+      restoredConnection = { parent: conn.parentNode, next: conn.nextSibling };
+      host.appendChild(conn);
+    }
+  } else {
+    if (restoredDetails && details) {
+      restoredDetails.parent.insertBefore(details, restoredDetails.next);
+      restoredDetails = null;
+    }
+    if (restoredConnection && conn) {
+      restoredConnection.parent.insertBefore(conn, restoredConnection.next);
+      restoredConnection = null;
+    }
+  }
+}
+function isDetailOpen() {
+  const clearBtn = $('clear-detail');
+  return Boolean((clearBtn && clearBtn.hidden === false) || hasClass($('details'), 'open'));
+}
+function closeDetails() {
+  const clearBtn = $('clear-detail');
+  if (clearBtn) {
+    const handler = clearBtn.listeners?.click || clearBtn.events?.click;
+    if (typeof clearBtn.click === 'function') clearBtn.click();
+    else if (typeof handler === 'function') handler();
+    clearBtn.hidden = true;
+  }
+  toggleClass($('details'), 'open', false);
+  if ($('detail-title')) $('detail-title').textContent = 'Chọn một thanh hoạt động';
+  if ($('detail-hint')) $('detail-hint').hidden = false;
+  $('detail-fields')?.replaceChildren?.();
+}
+function refreshViewportOnModeChange() {
+  if (!layout && currentRuns.length) draw(false);
+  if (!layout) return;
+  if (!userAdjustedView || !view) center();
+  else setView();
+  updateCrossLinks();
+}
+function setMapOnly(enabled, source = 'api', statusText = '') {
+  const next = Boolean(enabled);
+  if (next === mapOnly) {
+    if (next && source) mapOnlySource = source;
+    syncFullscreenControls();
+    if (statusText) announceMapStatus(statusText, statusText.includes('chặn'));
+    return;
+  }
+  if (next) {
+    savedTabHash = !active ? (location.hash || '#dong-thoi-gian') : null;
+    savedScroll = { x: window.scrollX || 0, y: window.scrollY || 0, chart: $('chart-shell')?.scrollLeft || 0 };
+    if (!active) {
+      location.hash = '#so-do';
+      selectTab();
+    }
+    mapOnly = true;
+    mapOnlySource = source || 'api';
+    legendOpen = false;
+    toggleClass(document.documentElement, 'map-only', true);
+    toggleClass($('details'), 'open', isDetailOpen());
+    relocateOverlays(true);
+    syncFullscreenControls();
+    announceMapStatus(statusText || 'Đã vào chế độ chỉ sơ đồ', Boolean(statusText && statusText.includes('chặn')));
+    refreshViewportOnModeChange();
+  } else {
+    mapOnly = false;
+    mapOnlySource = null;
+    legendOpen = false;
+    toggleClass(document.documentElement, 'map-only', false);
+    relocateOverlays(false);
+    syncFullscreenControls();
+    announceMapStatus('Đã thoát chế độ chỉ sơ đồ', false);
+    if (savedTabHash !== null) {
+      const restore = savedTabHash;
+      savedTabHash = null;
+      location.hash = restore;
+      selectTab();
+    } else {
+      refreshViewportOnModeChange();
+    }
+    if (savedScroll) {
+      if ($('chart-shell')) $('chart-shell').scrollLeft = savedScroll.chart;
+      window.scrollTo?.(savedScroll.x, savedScroll.y);
+      savedScroll = null;
+    }
+  }
+}
+function enterFullscreen() {
+  setMapOnly(true, 'api');
+  const target = fullscreenTarget();
+  if (typeof target?.requestFullscreen === 'function') {
+    try {
+      const promise = target.requestFullscreen();
+      if (promise && typeof promise.catch === 'function') {
+        promise.catch(() => {
+          mapOnlySource = 'fallback';
+          toggleClass(document.documentElement, 'map-only', true);
+          announceMapStatus('Trình duyệt chặn toàn màn hình', true);
+        });
+      }
+    } catch {
+      mapOnlySource = 'fallback';
+      toggleClass(document.documentElement, 'map-only', true);
+      announceMapStatus('Trình duyệt chặn toàn màn hình', true);
+    }
+  } else {
+    mapOnlySource = 'fallback';
+  }
+}
+function exitFullscreenMode() {
+  if (mapOnlySource === 'browser') browserFsDismissed = true;
+  const fsEl = document.fullscreenElement;
+  setMapOnly(false);
+  if (fsEl && typeof document.exitFullscreen === 'function') {
+    try {
+      const promise = document.exitFullscreen();
+      if (promise && typeof promise.catch === 'function') promise.catch(() => {});
+    } catch {}
+  }
+}
+function toggleFullscreen() {
+  if (mapOnly) exitFullscreenMode();
+  else enterFullscreen();
+}
+function isEditableTarget(target) {
+  if (!target) return false;
+  const tag = String(target.tagName || '').toUpperCase();
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || Boolean(target.isContentEditable);
+}
+const mediaQuery = window.matchMedia?.('(display-mode: fullscreen)');
+function checkBrowserFullscreen() {
+  if (document.fullscreenElement || mapOnlySource === 'api' || mapOnlySource === 'fallback') {
+    if (mapOnly) refreshViewportOnModeChange();
+    return;
+  }
+  const detected = isBrowserFullscreen(window, window.screen, Boolean(mediaQuery?.matches));
+  if (!detected) {
+    browserFsDismissed = false;
+    if (mapOnly && mapOnlySource === 'browser') setMapOnly(false);
+  } else if (!mapOnly && !browserFsDismissed) {
+    setMapOnly(true, 'browser');
+  }
+}
+document.addEventListener?.('keydown', event => {
+  if (event.key === 'F11') {
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
+    if (isEditableTarget(event.target || document.activeElement)) return;
+    event.preventDefault?.();
+    toggleFullscreen();
+  } else if (event.key === 'Escape' && mapOnly) {
+    event.preventDefault?.();
+    if (isDetailOpen()) closeDetails();
+    else exitFullscreenMode();
+  }
+});
+document.addEventListener?.('fullscreenchange', () => {
+  const fsEl = document.fullscreenElement;
+  if (fsEl && (fsEl === mapStage || fsEl === mapView)) {
+    setMapOnly(true, 'api');
+  } else if (!fsEl && mapOnly && mapOnlySource === 'api') {
+    setMapOnly(false);
+  }
+});
+mediaQuery?.addEventListener?.('change', checkBrowserFullscreen);
+window.addEventListener('resize', checkBrowserFullscreen);
 $('tab-timeline').addEventListener('click', () => { location.hash = 'dong-thoi-gian'; });
 $('tab-mindmap').addEventListener('click', () => { location.hash = 'so-do'; });
 window.addEventListener('hashchange', selectTab);
@@ -229,18 +576,37 @@ $('map-zoom-in').addEventListener('click', () => zoom(.75));
 $('map-zoom-out').addEventListener('click', () => zoom(1 / .75));
 $('map-center').addEventListener('click', center);
 $('map-reorder').addEventListener('click', () => draw(true));
+$('map-fullscreen')?.addEventListener('click', toggleFullscreen);
+$('map-legend-toggle')?.addEventListener('click', () => {
+  if (!mapOnly) return;
+  legendOpen = !legendOpen;
+  syncFullscreenControls();
+});
 svg.addEventListener('wheel', event => {
   event.preventDefault();
   const box = svg.getBoundingClientRect();
   zoom(event.deltaY > 0 ? 1.12 : 1 / 1.12, (event.clientX - box.left) / box.width, (event.clientY - box.top) / box.height);
 }, { passive: false });
+svg.addEventListener('click', event => {
+  if (event.target?.closest?.('[role="button"]')) return;
+  if (selectedCrossRunId !== null) {
+    selectedCrossRunId = null;
+    updateCrossLinks();
+  }
+});
 svg.addEventListener('pointerdown', event => {
-  if (event.target.closest('[role="button"]') || !view) return;
+  if (event.target?.closest?.('[role="button"]')) return;
+  if (selectedCrossRunId !== null) {
+    selectedCrossRunId = null;
+    updateCrossLinks();
+  }
+  if (!view) return;
   drag = { x: event.clientX, y: event.clientY, view: [...view] };
   svg.setPointerCapture(event.pointerId);
 });
 svg.addEventListener('pointermove', event => {
   if (!drag) return;
+  userAdjustedView = true;
   const box = svg.getBoundingClientRect();
   const scale = Math.max(drag.view[2] / box.width, drag.view[3] / box.height);
   view = [drag.view[0] - (event.clientX - drag.x) * scale, drag.view[1] - (event.clientY - drag.y) * scale, ...drag.view.slice(2)];
@@ -248,17 +614,20 @@ svg.addEventListener('pointermove', event => {
 });
 for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) svg.addEventListener(event, () => { drag = null; });
 window.boardMindmap = {
+  setMapOnly,
+  isMapOnly: () => mapOnly,
   update(runs, detail, key, claudeRuns = [], knownClaudeModels = []) {
     filteredCount = runs.length; claudeModels = knownClaudeModels;
     const ids = new Set(runs.map(run => run.id));
     currentRuns = [...runs, ...claudeRuns.filter(run => !ids.has(run.id))]; showDetails = detail;
     const reset = scope !== key;
-    if (reset) { layout = undefined; expanded.clear(); collapsed.clear(); }
+    if (reset) { layout = undefined; expanded.clear(); collapsed.clear(); userAdjustedView = false; }
     scope = key;
     // Tab Sơ đồ đang ẩn thì không tính bố cục và vẽ mỗi giây (đắt, không ai thấy); vẽ ngay khi chuyển sang tab này.
     if (!active) { $('run-count').textContent = `${filteredCount} thanh hoạt động`; return; }
     draw(reset);
   },
 };
+syncFullscreenControls();
 selectTab();
 window.dispatchEvent(new Event('mindmap-ready'));

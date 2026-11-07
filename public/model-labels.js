@@ -80,6 +80,7 @@ export function modelPrefix(raw) {
 }
 
 export const CROSS_PROJECT_LEGEND = 'Mũi tên nhỏ = giao chéo sang dự án khác';
+export const CROSS_PROJECT_LINK_LEGEND = 'Nét cong đứt = lần giao chéo sang dự án khác';
 export const CROSS_FILTER_OPTIONS = Object.freeze([
   { value: '', label: 'Tất cả' },
   { value: 'cross', label: 'Chỉ giao chéo' },
@@ -132,6 +133,25 @@ export function crossProjectBarText(run) {
 export function crossProjectLeafText(run) {
   if (!run?.crossProject) return '';
   return `giao chéo: làm việc ở dự án ${workProjectDisplay(run)}`;
+}
+
+export function crossProjectLinkText(run) {
+  if (!run?.crossProject) return '';
+  return `giao chéo: ${crossProjectCardText(run)}`;
+}
+
+export function crossProjectActiveText(run) {
+  if (!run?.crossProject) return '';
+  return `đang hiện đường nối sang dự án ${workProjectDisplay(run)}`;
+}
+
+export function isBrowserFullscreen(win, scr, displayModeFullscreen = false) {
+  if (displayModeFullscreen) return true;
+  const iw = Number(win?.innerWidth), ih = Number(win?.innerHeight);
+  const sw = Number(scr?.width), sh = Number(scr?.height);
+  if (!Number.isFinite(iw) || !Number.isFinite(ih) || !Number.isFinite(sw) || !Number.isFinite(sh)) return false;
+  if (iw <= 0 || ih <= 0 || sw <= 0 || sh <= 0) return false;
+  return Math.abs(iw - sw) <= 2 && Math.abs(ih - sh) <= 2;
 }
 
 export function crossProjectNodeText(count) {

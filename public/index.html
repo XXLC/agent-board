@@ -37,20 +37,27 @@
       <p id="empty" class="empty" hidden>Chưa có hoạt động trong khoảng và bộ lọc này.</p>
       </div>
       <div id="mindmap-view" role="tabpanel" aria-labelledby="tab-mindmap" hidden>
-        <div class="mindmap-toolbar">
-          <button id="map-zoom-out" aria-label="Thu nhỏ sơ đồ">Thu nhỏ</button>
-          <button id="map-zoom-in" aria-label="Phóng to sơ đồ">Phóng to</button>
-          <button id="map-center">Căn giữa</button>
-          <button id="map-reorder">Sắp xếp lại</button>
-          <span class="muted">Kéo nền để di chuyển. Bấm làn hoặc dự án để thu gọn, mở rộng.</span>
-        </div>
-        <svg id="mindmap" role="group" aria-label="Sơ đồ điều phối các lần giao việc"></svg>
-        <p id="mindmap-empty" class="empty" hidden>Chưa có lần giao việc trong khoảng này</p>
-        <div class="legend mindmap-legend" aria-label="Chú giải chuyển động của sơ đồ">
-          <span><svg viewBox="0 0 80 32" aria-hidden="true" class="activity-delegating" style="--travel:54px"><clipPath id="legend-flow-clip"><rect x="0" y="10" width="54" height="12"/></clipPath><g clip-path="url(#legend-flow-clip)"><line class="map-flow" x1="-20" y1="16" x2="64" y2="16"/></g><path class="map-arrow" d="M54 12 L62 16 L54 20 Z"/><g class="map-particles" transform="translate(4 16)"><circle class="map-packet" r="3"/><circle class="map-packet" r="3" style="animation-delay:-.9s"/></g><circle class="map-end-dot" cx="46" cy="16" r="3"/></svg>Nét đứt chạy từ Claude = đang giao việc</span>
-          <span><svg viewBox="0 0 80 32" aria-hidden="true"><g class="map-lane activity-working"><circle cx="38" cy="16" r="7" fill="none" stroke="var(--lane)"/><circle class="map-halo halo-0" cx="38" cy="16" r="9"/><circle class="map-halo halo-1" cx="38" cy="16" r="9"/></g></svg>Vòng tròn nhấp nháy = đang làm</span>
-          <span><svg viewBox="0 0 80 32" aria-hidden="true"><line x1="4" y1="16" x2="64" y2="16" stroke="var(--line)" stroke-width="1.2"/></svg>Nét liền mảnh = đã xong</span>
-          <span id="mindmap-legend-cross"><svg viewBox="0 0 80 32" aria-hidden="true"><g class="map-node map-run cross-project" transform="translate(40 16)"><circle r="8" fill="var(--lane)" stroke="var(--lane)"/><path class="map-cross-mark" d="M-15 -6 L-9 -6 L-9 -9 L-5 -4.5 L-9 0 L-9 -3 L-15 -3 Z"/></g></svg>Mũi tên nhỏ = giao chéo sang dự án khác</span>
+        <div id="map-stage" class="map-stage" role="region" aria-label="Sơ đồ điều phối">
+          <div id="map-counters" class="map-counters"></div>
+          <div class="mindmap-toolbar">
+            <button id="map-zoom-out" aria-label="Thu nhỏ sơ đồ">Thu nhỏ</button>
+            <button id="map-zoom-in" aria-label="Phóng to sơ đồ">Phóng to</button>
+            <button id="map-center">Căn giữa</button>
+            <button id="map-reorder">Sắp xếp lại</button>
+            <button id="map-fullscreen" type="button" aria-pressed="false" title="Toàn màn hình chỉ sơ đồ (F11)">Toàn màn hình</button>
+            <button id="map-legend-toggle" type="button" aria-pressed="false" aria-controls="mindmap-legend" hidden>Chú giải</button>
+            <span class="muted">Kéo nền để di chuyển. Bấm làn hoặc dự án để thu gọn, mở rộng. Phím F11: toàn màn hình.</span>
+          </div>
+          <p id="map-status" class="map-status sr-only" role="status" aria-live="polite"></p>
+          <svg id="mindmap" role="group" aria-label="Sơ đồ điều phối các lần giao việc"></svg>
+          <p id="mindmap-empty" class="empty" hidden>Chưa có lần giao việc trong khoảng này</p>
+          <div id="mindmap-legend" class="legend mindmap-legend" aria-label="Chú giải chuyển động của sơ đồ">
+            <span><svg viewBox="0 0 80 32" aria-hidden="true" class="activity-delegating" style="--travel:54px"><clipPath id="legend-flow-clip"><rect x="0" y="10" width="54" height="12"/></clipPath><g clip-path="url(#legend-flow-clip)"><line class="map-flow" x1="-20" y1="16" x2="64" y2="16"/></g><path class="map-arrow" d="M54 12 L62 16 L54 20 Z"/><g class="map-particles" transform="translate(4 16)"><circle class="map-packet" r="3"/><circle class="map-packet" r="3" style="animation-delay:-.9s"/></g><circle class="map-end-dot" cx="46" cy="16" r="3"/></svg>Nét đứt chạy từ Claude = đang giao việc</span>
+            <span><svg viewBox="0 0 80 32" aria-hidden="true"><g class="map-lane activity-working"><circle cx="38" cy="16" r="7" fill="none" stroke="var(--lane)"/><circle class="map-halo halo-0" cx="38" cy="16" r="9"/><circle class="map-halo halo-1" cx="38" cy="16" r="9"/></g></svg>Vòng tròn nhấp nháy = đang làm</span>
+            <span><svg viewBox="0 0 80 32" aria-hidden="true"><line x1="4" y1="16" x2="64" y2="16" stroke="var(--line)" stroke-width="1.2"/></svg>Nét liền mảnh = đã xong</span>
+            <span id="mindmap-legend-cross"><svg viewBox="0 0 80 32" aria-hidden="true"><g class="map-node map-run cross-project" transform="translate(40 16)"><circle r="8" fill="var(--lane)" stroke="var(--lane)"/><path class="map-cross-mark" d="M-15 -6 L-9 -6 L-9 -9 L-5 -4.5 L-9 0 L-9 -3 L-15 -3 Z"/></g></svg>Mũi tên nhỏ = giao chéo sang dự án khác</span>
+            <span id="mindmap-legend-cross-link"><svg viewBox="0 0 80 32" aria-hidden="true"><g class="map-cross-link"><path class="map-cross-path" d="M6 22 Q34 4 62 18"/><path class="map-cross-arrow" d="M54 13 L63 18.5 L53 21 Z"/></g></svg>Nét cong đứt = lần giao chéo sang dự án khác</span>
+          </div>
         </div>
       </div>
       <div class="legend"><span><i class="sample ok"></i>Thành công</span><span><i class="sample error">X</i>Lỗi</span><span><i class="sample quota"></i>Hết quota</span><span><i class="sample running"></i>Đang chạy</span><span><i class="sample unknown"></i>Chưa rõ</span><span id="legend-cross"><i class="sample cross-project"><span class="cross-project-mark" aria-hidden="true"></span></i>Mũi tên nhỏ = giao chéo sang dự án khác</span><span id="legend-sonnet"><i class="sample claude-sonnet"></i><span></span></span><span id="legend-opus"><i class="sample claude-opus"></i><span></span></span><span class="muted">Thanh mờ: phiên tương tác. Kéo vùng trống để cuộn.</span></div>

@@ -1,6 +1,7 @@
-import { LANE_LABELS, countModels, modelLabel } from './model-labels.js';
+import { LANE_LABELS, countModels, isBrowserFullscreen, modelLabel } from './model-labels.js';
 import { activityPhase } from './activity.js';
 
+export { isBrowserFullscreen };
 export const MINDMAP_LANES = ['Codex', 'Opus', 'Argon'];
 const TAU = Math.PI * 2;
 const recent = (a, b) => b.start - a.start || String(a.id).localeCompare(String(b.id));

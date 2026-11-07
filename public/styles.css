@@ -1073,6 +1073,238 @@ footer p {
   display:inline
 }
 
+/* Đường nối giao chéo sang dự án khác trên sơ đồ. */
+.map-cross-links {
+  pointer-events:none
+}
+
+.map-cross-link {
+  --activity-color:color-mix(in srgb,var(--lane) 80%,var(--text));
+  pointer-events:none
+}
+
+.map-cross-path {
+  fill:none;
+  stroke:var(--activity-color);
+  stroke-width:2;
+  stroke-dasharray:8 6;
+  stroke-linecap:round
+}
+
+.map-cross-link.selected .map-cross-path {
+  stroke-width:2.5
+}
+
+.map-cross-link.running .map-cross-path {
+  stroke-dasharray:12 8;
+  animation:activity-blink 1.6s ease-in-out infinite
+}
+
+.map-cross-link.activity-delegating .map-cross-path {
+  animation-duration:.7s
+}
+
+.map-cross-arrow {
+  fill:var(--activity-color)
+}
+
+.map-cross-tag rect {
+  fill:var(--raised);
+  stroke:var(--activity-color);
+  stroke-width:1.5;
+  stroke-dasharray:4 3
+}
+
+.map-cross-tag text {
+  fill:var(--text);
+  font:11px system-ui,sans-serif
+}
+
+/* Khung bao sơ đồ, vùng đếm #map-counters và chế độ toàn màn hình chỉ sơ đồ (F11). */
+.map-stage {
+  position:relative;
+  width:100%;
+  min-width:0
+}
+
+.map-counters {
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  padding:8px 24px 0;
+  font-size:11px;
+  color:var(--muted)
+}
+
+#map-counters:empty {
+  display:none
+}
+
+.map-status-toast {
+  position:fixed;
+  top:58px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:30;
+  padding:6px 12px;
+  background:var(--raised);
+  border:1px solid var(--claude);
+  border-radius:6px;
+  color:var(--text);
+  font-size:12px;
+  pointer-events:none
+}
+
+html.map-only,
+html.map-only body {
+  overflow:hidden;
+  width:100vw;
+  height:100vh
+}
+
+html.map-only main {
+  max-width:none;
+  width:100vw;
+  height:100vh;
+  margin:0;
+  padding:0
+}
+
+html.map-only .masthead > :first-child,
+html.map-only #cards,
+html.map-only #scan-progress,
+html.map-only .section-heading,
+html.map-only .view-tabs,
+html.map-only .controls,
+html.map-only #project-reasons,
+html.map-only .chart-toolbar,
+html.map-only #timeline-view,
+html.map-only .timeline-section > .legend,
+html.map-only footer {
+  display:none!important
+}
+
+html.map-only .masthead {
+  margin:0
+}
+
+html.map-only .timeline-section {
+  margin:0;
+  border:0;
+  border-radius:0;
+  width:100vw;
+  height:100vh;
+  background:var(--bg)
+}
+
+html.map-only #mindmap-view,
+html.map-only .map-stage,
+.map-stage:fullscreen,
+#mindmap-view:fullscreen {
+  position:fixed;
+  inset:0;
+  width:100vw;
+  height:100vh;
+  background:var(--bg);
+  z-index:10
+}
+
+html.map-only #mindmap,
+.map-stage:fullscreen #mindmap,
+#mindmap-view:fullscreen #mindmap {
+  width:100vw;
+  height:100vh;
+  max-height:none;
+  min-height:100vh
+}
+
+html.map-only #map-counters,
+.map-stage:fullscreen #map-counters {
+  position:fixed;
+  top:12px;
+  left:12px;
+  z-index:20;
+  padding:6px 10px;
+  background:color-mix(in srgb,var(--surface) 88%,transparent);
+  border:1px solid var(--line);
+  border-radius:8px
+}
+
+html.map-only .mindmap-toolbar,
+.map-stage:fullscreen .mindmap-toolbar {
+  position:fixed;
+  top:12px;
+  left:50%;
+  transform:translateX(-50%);
+  z-index:20;
+  padding:6px 10px;
+  background:color-mix(in srgb,var(--surface) 88%,transparent);
+  border:1px solid var(--line);
+  border-radius:8px;
+  backdrop-filter:blur(6px)
+}
+
+html.map-only .mindmap-toolbar .muted,
+.map-stage:fullscreen .mindmap-toolbar .muted {
+  display:none
+}
+
+html.map-only .connection,
+.map-stage:fullscreen .connection {
+  position:fixed;
+  top:12px;
+  right:12px;
+  z-index:20;
+  padding:6px 10px;
+  background:color-mix(in srgb,var(--surface) 88%,transparent);
+  border:1px solid var(--line);
+  border-radius:8px;
+  font-size:10px
+}
+
+html.map-only .connection time,
+.map-stage:fullscreen .connection time {
+  font-size:14px
+}
+
+html.map-only .mindmap-legend,
+.map-stage:fullscreen .mindmap-legend {
+  position:fixed;
+  bottom:12px;
+  left:12px;
+  z-index:20;
+  max-width:min(92vw,760px);
+  padding:10px 14px;
+  background:color-mix(in srgb,var(--surface) 92%,transparent);
+  border:1px solid var(--line);
+  border-radius:8px
+}
+
+html.map-only .details,
+.map-stage:fullscreen .details {
+  display:none
+}
+
+html.map-only .details.open,
+.map-stage:fullscreen .details.open {
+  display:block;
+  position:fixed;
+  right:12px;
+  bottom:12px;
+  z-index:25;
+  width:min(520px,calc(100vw - 24px));
+  max-height:min(72vh,540px);
+  overflow:auto;
+  margin:0;
+  background:color-mix(in srgb,var(--surface) 95%,transparent);
+  box-shadow:0 8px 28px rgba(0,0,0,.35)
+}
+
+html.map-only .details.open dl,
+.map-stage:fullscreen .details.open dl {
+  grid-template-columns:repeat(2,minmax(0,1fr))
+}
+
 @media(prefers-reduced-motion:reduce) {
   *,*::before,*::after { animation:none!important; }
   .map-lane.activity-working .map-halo,.map-run.activity-working .map-halo {
@@ -1092,6 +1324,14 @@ footer p {
      nên hai trạng thái vẫn phân biệt được mà không cần animation. */
   .map-edge.activity-delegating > .map-end-dot,.map-edge.activity-delegating > .map-arrow,
   .activity-delegating > .map-end-dot { display:inline; }
+  .map-cross-link .map-cross-path {
+    stroke-dasharray:8 6;
+    opacity:1;
+  }
+  .map-cross-link .map-cross-arrow {
+    display:inline;
+    opacity:1;
+  }
   .activity-dot,.badge.active::before { opacity:1; }
   .activity-dot::after,.badge.active::after { border-width:2px; opacity:1; }
   .activity-phase { display:inline; }

@@ -160,8 +160,10 @@ async function loadRuns() {
   finally { fetching = false; if (fetchQueued) { fetchQueued = false; void loadRuns(); } }
 }
 function showDetails(run, pin = false) {
+  if (document.documentElement?.classList?.contains('map-only') && !pin && !pinned) return;
   if (pinned && !pin && selected?.id !== run.id) return;
   selected = run; if (pin) pinned = true;
+  $('details')?.classList?.toggle('open', true);
   $('detail-title').textContent = `${LANE_LABELS[run.lane] || run.lane} · ${run.kind}`;
   $('detail-hint').hidden = true; $('clear-detail').hidden = false;
   const names = { ok: 'thành công', error: 'lỗi', quota: 'hết quota', unknown: 'chưa rõ' };
@@ -336,6 +338,7 @@ $('focus-activity').addEventListener('click', () => {
 });
 $('clear-detail').addEventListener('click', () => {
   selected = null; pinned = false;
+  $('details')?.classList?.toggle('open', false);
   $('detail-title').textContent = 'Chọn một thanh hoạt động';
   $('detail-hint').hidden = false; $('detail-fields').replaceChildren(); $('clear-detail').hidden = true;
   renderChart();
