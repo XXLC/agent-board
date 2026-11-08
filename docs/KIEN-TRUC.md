@@ -24,12 +24,13 @@ Mọi nguồn chỉ đọc. Chỉ mục nằm trong bộ nhớ; khởi động l
 | `lib/scanner.mjs` | điều phối quét: khám phá tệp, đọc phần nối thêm, dựng danh sách run, phát sự kiện `change` |
 | `lib/scan-workers.mjs`, `lib/scanner-worker.mjs` | nhóm tối đa 4 luồng phụ chỉ dùng cho lượt quét đầu lớn; mỗi tệp vẫn được xử lý tuần tự |
 | `lib/parsers.mjs` | phân tích lệnh giao việc, che bí mật, ghép Codex, quy tắc phân làn model, lời nhắc |
-| `lib/agy.mjs` | đọc SQLite của agy (chỉ đọc, luồng riêng), giải mã trường protobuf, ghép với lệnh Claude |
-| `lib/projects.mjs` | xác định dự án theo thư mục project của Claude, dự án ngoài Claude, lý do "không rõ" |
+| `lib/agy.mjs` | đọc SQLite của agy (chỉ đọc, luồng riêng), giải mã trường protobuf (mốc giờ, lời nhắc, thư mục, token), ghép với lệnh Claude |
+| `lib/tokens.mjs` | chuẩn hóa và cộng dồn token cho Claude, Codex, agy; tính `tokens24h`, `busyMs24h`, `tokensRunning` |
+| `lib/projects.mjs` | xác định dự án theo thư mục project của Claude, dự án ngoài Claude, giao chéo, lý do "không rõ" |
 | `lib/prompt-files.mjs` | đọc dòng đầu của tệp lời nhắc theo danh sách cho phép |
 | `lib/processes.mjs` | quét tiến trình `agy`, `codex` đang chạy |
 | `lib/codex-config.mjs` | đọc đúng hai khóa `model` và `model_reasoning_effort` |
-| `public/` | giao diện (HTML, CSS, JS thuần, không framework, không CDN) |
+| `public/` | giao diện thuần (`app.js`, `mindmap.js`, `mindmap-layout.js`, `counters.js`, `wake-lock.js`, `model-labels.js`, `activity.js`, `styles.css`) |
 | `bin/agent-board.mjs`, `bin/agent-board.cmd` | lệnh `start`, `stop`, `restart`, `status` |
 | `scripts/` | công cụ phát triển: `fingerprint`, `perf`, `smoke`, `survey` (xem [KIEM-THU.md](KIEM-THU.md)) |
 
@@ -45,8 +46,8 @@ Mọi nguồn chỉ đọc. Chỉ mục nằm trong bộ nhớ; khởi động l
 
 Chỉ có `GET`:
 
-- `/api/state`: trạng thái bốn làn (kèm `models24h` và `models7d`: số lần chạy theo model trong 24 giờ và 7 ngày), tiến độ quét (kèm thống kê, gồm `crossProjects`), cấu hình Codex hiện tại.
-- `/api/runs?from=ISO&to=ISO`: các lần giao việc và đoạn hoạt động trong khoảng; lời nhắc đã che; có cờ `crossProject` và các trường `workProject*` khi giao chéo dự án.
+- `/api/state`: trạng thái bốn làn (kèm `models24h`, `models7d`, `tokens24h`, `busyMs24h`, `tokensRunning`), tiến độ quét (kèm thống kê, gồm `crossProjects`), cấu hình Codex hiện tại.
+- `/api/runs?from=ISO&to=ISO`: các lần giao việc và đoạn hoạt động trong khoảng; lời nhắc đã che; có `tokens`, `tokenSource`, cờ `crossProject` và các trường `workProject*` khi giao chéo dự án (chi tiết ở [NGUON-DU-LIEU.md](NGUON-DU-LIEU.md)).
 - `/events`: SSE đẩy trạng thái mỗi khi đổi, nhịp tim mỗi 15 giây.
 
 Mã làn nội bộ là `Claude`, `Codex`, `Opus`, `Argon`; tên hiển thị ("Claude Code", "Antigravity Opus", "Gemini Argon") chỉ tồn tại ở giao diện (`public/model-labels.js`). Trạng thái "giao/làm" (`public/activity.js`) là dẫn xuất phía giao diện, không nằm trong dữ liệu quét.

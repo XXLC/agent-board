@@ -44,7 +44,7 @@ Mỗi tệp `.db` là SQLite thường (không mã hóa) với blob protobuf kh�
 - **Trạng thái**: mã bước cuối 3 xuất hiện với cả thành công, lỗi và hết quota (đối chiếu 212 cặp: 149 thành công, 4 lỗi, 15 quota, 41 chưa rõ), nên **không thể** coi 3 là thành công. Mọi kết quả từ DB giữ `unknown`. Mã 3 chỉ là dấu hiệu bước đã kết thúc; mã khác và `.db`/`.db-wal` mới hơn 90 giây là tín hiệu đang chạy có tính suy đoán.
 - Ghép với lệnh Claude: cùng làn, model giống hoàn toàn, giờ bắt đầu lệch tối đa 120 giây, cặp gần nhất trước, một đối một. Thanh ghép dùng giờ, model, trạng thái từ DB và giữ lời nhắc, dự án, loại việc từ lệnh. Thanh độc lập ghi "Hội thoại agy, không rõ nguồn giao".
 
-Chỉ chọn các cột `trajectory_meta.trajectory_id`, `gen_metadata.data`, `steps.idx/step_type/status/metadata/step_payload` và `trajectory_metadata_blob.data`. Cache trong bộ nhớ chỉ giữ đường dẫn, kích thước, mtime, cờ lỗi và các trường rút gọn (mã phiên, model, mốc giờ, mã trạng thái, thư mục làm việc, lời nhắc đã che tối đa 200 ký tự).
+Chỉ chọn các cột `trajectory_meta.trajectory_id`, `gen_metadata.data`, `steps.idx/step_type/status/metadata/step_payload` và `trajectory_metadata_blob.data`. Cache trong bộ nhớ chỉ giữ đường dẫn, kích thước, mtime, cờ lỗi và các trường rút gọn (mã phiên, model, mốc giờ, mã trạng thái, thư mục làm việc, số token, lời nhắc đã che tối đa 200 ký tự).
 
 ## Dự án
 
@@ -70,6 +70,25 @@ Giao chéo dự án là khi phiên Claude ở dự án A giao agy hoặc Codex l
 - `crossProject` là true khi **cả hai** dự án (của lần giao và của thư mục thực thi) đều đã biết và khác nhau. Không tính là chéo: thư mục tạm hoặc scratchpad của phiên, `~/.claude`, dự án không rõ, phiên tương tác Codex và đoạn hoạt động Claude. Run mà dự án được suy ra từ chính thư mục thực thi (agy hoặc Codex độc lập) thì hai khóa trùng nên không chéo.
 - Chỉ khi `crossProject` là true run mới có `workProjectKey`, `workProjectLabel`, `workProjectPath`, `workProjectOutsideClaude`. Các trường này được tính ở lớp xuất (`runs()`, `state()`), không nằm trong dữ liệu quét nên không đổi hash kiểm hồi quy. `scan.statistics.crossProjects` có `{count, total}` với `total` là số lần giao đủ thông tin để xét.
 - Số liệu mẫu ngày 08/11/2026: 112 trên 663 lần giao đủ thông tin là chéo (Codex 77, Gemini Argon 29, Antigravity Opus 6; theo nguồn: rollout Codex 67, hội thoại agy 35, lệnh có `-C` 10). Trong đó 34 hội thoại agy đã ghép với lệnh Claude khớp đúng 34 trường hợp được người dùng xác nhận là giao chéo.
+
+## Bộ đếm thời gian và token
+
+Mỗi run trong `/api/runs` có `tokens` (`{ input, cacheRead, cacheWrite, output, reasoning, total }` với `total = input + cacheRead + cacheWrite + output`; `reasoning` nằm trong `output` nên không cộng lần hai) và `tokenSource` (`'claude' | 'codex' | 'agy' | null`). Khi nguồn chưa có số liệu hợp lệ thì `tokens: null`, `tokenSource: null` (khác với đối tượng có `total: 0`).
+
+- **Claude Code (`tokenSource: 'claude'`)**: lấy `message.usage` từ bản ghi `assistant` (`input_tokens`, `cache_read_input_tokens`, `cache_creation_input_tokens`, `output_tokens`; `reasoning = 0`). Khử trùng theo `message.id` (khóa `m:<message.id>`, dự phòng `u:<uuid>` khi thiếu `message.id`), lấy giá trị lớn nhất (`max`) từng trường giữa các bản ghi cùng khóa, kể cả khi đọc nối thêm hoặc hợp hai đoạn hoạt động (`mergeActivityUsage`). Token chỉ tính trên đoạn hoạt động (`claude-session`), không gán vào lệnh giao việc `claude-tool`.
+- **Codex (`tokenSource: 'codex'`)**: đọc `event_msg` loại `token_count` (`payload.info.total_token_usage`) hoặc `token_usage_record` (`payload.thread_token_usage`), lấy bản ghi hợp lệ **cuối cùng** trong rollout (không cộng dồn các sự kiện, không suy từ `turn_token_usage` hay `total_tokens` rời). Chuẩn hóa: `cacheRead = cached_input_tokens`, `input = max(0, input_tokens - cached_input_tokens)`, `cacheWrite = 0`, `output = output_tokens`, `reasoning = reasoning_output_tokens`, `total = input + cacheRead + output`. Khi ghép với lệnh Claude, run ghép nhận `tokens` và `tokenSource: 'codex'` từ rollout.
+- **Antigravity / agy (`tokenSource: 'agy'`)**:
+  - Giải mã protobuf trong `gen_metadata.data` (chỉ đọc DB với `readOnly: true`) theo cấu trúc tham khảo từ nguồn mở MIT `agentsview` nhưng tự cài đặt lại trong `lib/agy.mjs` (`extractGenerationTokens`, `readUsage`).
+  - Đường chuẩn: trường 1 (`chat_model`, wire 2) → trường 4 (`usage`, wire 2); dự phòng duyệt đệ quy các trường wire 2 (độ sâu tối đa `MAX_DEPTH = 6`, tối đa `MAX_FIELDS = 4000` trường).
+  - Trong message `usage`, các trường 1..5 phải có kiểu varint (`wire = 0`): trường 1 là mã `model` bắt buộc thuộc `[1000, 5000)`; trường 2 là `input` (chưa cache, bắt buộc); trường 3 là `output` (gồm cả thinking, bắt buộc); trường 4 (`cacheWrite` trong cấu trúc protobuf) được kiểm tra kiểu và trần nhưng không lưu vào kết quả (`cacheWrite = 0`); trường 5 là `cacheRead` (tùy chọn, mặc định `0`). Mọi trường 2..5 và cả tổng `input + output` đều có trần `2.000.000` (`TOKEN_LIMIT`, giúp loại bỏ khối giả kiểu nano giây).
+  - Cộng dồn qua các hàng `gen_metadata` hợp lệ trong hội thoại (`addAgyUsage`, giữ `cacheWrite = 0`, `reasoning = 0`, `total = input + cacheRead + output`); khi ghép với lệnh Claude (`mergeAgy`), run ghép nhận `tokens` và `tokenSource: 'agy'` từ DB.
+  - **Kiểm độc lập và độ tin cậy**: đối chiếu bằng bộ giải mã Python riêng trên dữ liệu thật cho **381/381** hội thoại khớp API, **99,2%** hàng `gen_metadata` giải mã được, **98,82%** cặp thế hệ kề nhau có ngữ cảnh (`input + cacheRead`) không giảm. Tuy nhiên vẫn **chưa có sự thật gốc** chính thức từ agy.
+
+Trên từng làn của `/api/state` (`laneTokenMetrics` trong `lib/tokens.mjs`):
+
+- `tokens24h`: `{ input, cacheRead, cacheWrite, output, reasoning, total, runsWithTokens, runsTotal }` tính cho các run của làn bắt đầu trong 24 giờ qua (`now - 86_400_000 <= start <= now`), với `runsWithTokens` là số run có `tokens !== null`.
+- `busyMs24h`: tổng thời gian bận (ms) trong cửa sổ 24 giờ qua sau khi hợp các khoảng chồng nhau hoặc liền kề và cắt tại `[now - 86_400_000, now]`.
+- `tokensRunning`: tổng `tokens.total` của mọi run đang chạy (`running: true`) trên làn đó, không phụ thuộc giờ bắt đầu.
 
 ## Model và làn
 

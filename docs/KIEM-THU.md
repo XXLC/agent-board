@@ -7,9 +7,14 @@ npm test                      # tương đương: node --test
 node --disable-warning=ExperimentalWarning --test    # ẩn cảnh báo node:sqlite thử nghiệm
 ```
 
-Test dùng dữ liệu tổng hợp (JSONL và SQLite tạo tạm trong `.cache`), không đụng bản ghi thật và không chứa bí mật hay tên thật. Mỗi lỗi đã sửa có test hồi quy; khi sửa một lỗi, nên kiểm tra bằng đột biến rằng test mới thật sự thất bại với mã cũ (đặt lại logic cũ, chạy test, rồi khôi phục).
+Test dùng dữ liệu tổng hợp (JSONL và SQLite tạo tạm trong `.cache`), không đụng bản ghi thật và không chứa bí mật hay tên thật. Hiện bộ kiểm thử có **245 kiểm thử đạt, 0 lỗi** khi chạy `node --test`. Mỗi lỗi đã sửa có test hồi quy; khi sửa một lỗi, nên kiểm tra bằng đột biến rằng test mới thật sự thất bại với mã cũ (đặt lại logic cũ, chạy test, rồi khôi phục).
 
-Nhóm test chính: `board` (quét, API, Host), `agy` (SQLite, mốc giờ, ghép, cache), `codex-prompts` (lời nhắc), `projects` (gom dự án), `model-labels`, `activity`, `performance` (nhường vòng lặp), `mindmap`/`mindmap-ui` (hình học, SSE, chuyển pha), `ui` (DOM mô phỏng cho dòng thời gian và thẻ). Test giao diện chạy trong `node:vm` với DOM tối thiểu, nên **không thay thế** việc xem trên trình duyệt thật (font, hoạt ảnh, cảm ứng).
+Các tệp kiểm thử trong `test/`:
+
+- Quét, phân tích, ghép và hiệu năng: `board.test.mjs` (quét, API, Host), `agy.test.mjs` (SQLite, mốc giờ, ghép, cache), `agy-tokens.test.mjs` (giải mã protobuf `gen_metadata`, kiểm trần 2.000.000, cộng dồn và ghép token agy), `tokens.test.mjs` (khử trùng `message.id` của Claude, tích lũy cuối của Codex, `tokens24h`, `busyMs24h`, `tokensRunning`), `codex-prompts.test.mjs` (lời nhắc), `projects.test.mjs` (gom dự án, giao chéo), `performance.test.mjs` (nhường vòng lặp).
+- Giao diện, sơ đồ và bộ đếm: `model-labels.test.mjs`, `activity.test.mjs`, `counters.test.mjs` (định dạng thời lượng, đơn vị triệu/tỷ token, độ phủ, hợp khoảng thời gian), `wake-lock.test.mjs` (vòng đời Screen Wake Lock, ẩn/hiện tab, thử lại tối đa 3 lần), `mindmap.test.mjs` và `mindmap-ui.test.mjs` (hình học, SSE, chuyển pha), `node-text.test.mjs` (dòng chữ trong bóng, dự trữ ô đồng hồ, bỏ chữ pha, bộ đếm bóng dự án), `mindmap-sizing.test.mjs` (thứ bậc bán kính gốc > làn > dự án > lá, trần bán kính dự án, bù cỡ chữ theo thu phóng, ẩn dòng phụ dưới 8 px, kiểm đột biến), `fullscreen.test.mjs` (chế độ chỉ sơ đồ `map-only`, phím F11/Esc hai bậc, phát hiện toàn màn hình trình duyệt, đường nối giao chéo), `ui.test.mjs` (DOM mô phỏng cho dòng thời gian, thẻ, chip và nhịp sống).
+
+Test giao diện chạy trong `node:vm` với DOM tối thiểu, nên **không thay thế** việc xem trên trình duyệt thật (font, hoạt ảnh, cảm ứng).
 
 ## Cổng hồi quy bằng hash
 
@@ -24,7 +29,7 @@ node --disable-warning=ExperimentalWarning scripts/fingerprint.mjs .cache/sau.js
 
 Hash `sha256` bao phủ id, làn, nguồn, trạng thái, `projectKey`, `promptSource`, `start`, `end`, `model` của các run **đã xong** và bắt đầu trước mốc cắt. Trùng nghĩa là hành vi không đổi; khác là đã đổi hành vi (hoàn nguyên hoặc giải thích, không được cập nhật mốc so sánh cho khớp). Chạy hai lần liên tiếp phải cho cùng hash. Dùng mốc cắt cách hiện tại vài chục phút vì phiên đang ghi thêm dữ liệu. Tệp ra không chứa lời nhắc hay nội dung.
 
-Đổi giao diện thuần tuý không được làm đổi hash; thêm trường mới vào run thì không đổi hash, nhưng đổi giá trị trường đã nằm trong hash thì đổi.
+Đổi giao diện thuần tuý không được làm đổi hash; thêm trường mới vào run (như `tokens`, `tokenSource`, `crossProject`) thì không đổi hash, nhưng đổi giá trị trường đã nằm trong hash thì đổi. Mốc kiểm đã xác nhận trên dữ liệu phát triển hiện tại: mốc cắt `1794071641107` cho `2358` run đã xong, mã băm `sha256` `ccf32280b89248e1...`.
 
 ## Đo hiệu năng
 

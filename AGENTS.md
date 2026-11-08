@@ -38,7 +38,7 @@ Bảng web cục bộ theo dõi Claude Code, Codex, Antigravity Opus và Gemini 
 | `bin/` | lệnh `agent-board` |
 | `scripts/` | công cụ phát triển (fingerprint, perf, smoke, survey) |
 | `test/` | test dùng dữ liệu tổng hợp |
-| `docs/` | kiến trúc, nguồn dữ liệu, giao diện, kiểm thử, xử lý sự cố |
+| `docs/` | [KIEN-TRUC.md](docs/KIEN-TRUC.md), [NGUON-DU-LIEU.md](docs/NGUON-DU-LIEU.md), [GIAO-DIEN.md](docs/GIAO-DIEN.md), [KIEM-THU.md](docs/KIEM-THU.md), [XU-LY-SU-CO.md](docs/XU-LY-SU-CO.md) |
 | `.cache/` | tệp tạm, nhật ký, báo cáo (không đưa vào git) |
 
 ## Khi hoàn tất một việc
