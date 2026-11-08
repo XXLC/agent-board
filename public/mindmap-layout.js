@@ -76,8 +76,12 @@ export function compensatedFont(row, radius, scale, type) {
   return Math.min(wanted, row.maxFontSize, widthCap);
 }
 
-export function rowVisible(row, fontSize, scale) {
-  return row.kind === 'label' || fontSize * scale >= SUBTITLE_MIN_SCREEN_PX;
+// Phụ đề hiện khi chữ đủ lớn, HOẶC khi khung nhìn không nhỏ hơn khung "Căn giữa" (fitScale):
+// ở mặc định vẫn thấy thông tin, chỉ thu nhỏ hơn mặc định mới ẩn.
+export const DEFAULT_VIEW_TOLERANCE = .98;
+export function rowVisible(row, fontSize, scale, fitScale = Infinity) {
+  return row.kind === 'label' || fontSize * scale >= SUBTITLE_MIN_SCREEN_PX
+    || scale >= fitScale * DEFAULT_VIEW_TOLERANCE;
 }
 
 // Bán kính nhỏ nhất thỏa đồng thời dây cung ngang và lề dọc của mọi hộp chữ.

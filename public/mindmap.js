@@ -102,12 +102,15 @@ function updateTextScale() {
   const box = svg.getBoundingClientRect();
   const scale = Math.min(box.width / view[2], box.height / view[3]);
   if (!(scale > 0)) return;
+  // Tỉ lệ của khung "Căn giữa" theo kích thước vùng vẽ hiện tại (không lưu trạng thái).
+  const core = layout?.coreBounds;
+  const fitScale = core ? Math.min(box.width / core[2], box.height / core[3]) : Infinity;
   for (const item of nodeElements.values()) {
     for (const { row, element } of item.textRows || []) {
       const fontSize = compensatedFont(row, item.node.r, scale, item.node.type);
       element.setAttribute('style', `font-size:${fontSize}px`);
       if (item.node.type === 'run' || item.node.type === 'more') continue;
-      element.setAttribute('display', rowVisible(row, fontSize, scale) ? 'inline' : 'none');
+      element.setAttribute('display', rowVisible(row, fontSize, scale, fitScale) ? 'inline' : 'none');
       element.setAttribute('textLength', row.width * fontSize / row.fontSize);
     }
   }

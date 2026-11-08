@@ -90,6 +90,20 @@ function visibility(api) {
 }
 test('Ẩn dòng phụ dưới 8 px, hiện từ 8 px và không bao giờ ẩn tiêu đề', () => visibility(sizing));
 
+function defaultView(api) {
+  const fit = .45;
+  for (const kind of ['subtitle', 'counter', 'elapsed']) {
+    // Ở khung "Căn giữa" (mặc định) và phóng to hơn: luôn hiện dù chữ chỉ 5,4 px.
+    assert.equal(api.rowVisible({ kind }, 12, fit, fit), true);
+    assert.equal(api.rowVisible({ kind }, 12, fit * 2, fit), true);
+    // Chỉ khi thu nhỏ hơn mặc định (và chữ dưới 8 px) mới ẩn.
+    assert.equal(api.rowVisible({ kind }, 12, fit * .8, fit), false);
+    assert.equal(api.rowVisible({ kind }, 12, fit * .5, fit), false);
+  }
+  assert.equal(api.rowVisible({ kind: 'label' }, 15, .01, fit), true);
+}
+test('Ở khung Căn giữa vẫn thấy dòng phụ, chỉ thu nhỏ hơn mặc định mới ẩn', () => defaultView(sizing));
+
 test('Khung lõi và bù chữ đạt ngưỡng dự kiến trên vùng 1159 x 760 ở bốn khoảng', () => {
   for (const [hours, count] of [[6, 6], [24, 120], [168, 500], [720, 500]]) {
     const runs = samples(count);
@@ -129,6 +143,7 @@ test('Ba đột biến bị kiểm thử mới bắt: bỏ trần, bỏ chặn c
     ['return Math.min(limits.max, nodeRadius(rows, limits.min));', 'return nodeRadius(rows, limits.min);', cap],
     ['return Math.min(wanted, row.maxFontSize, widthCap);', 'return wanted;', compensation],
     ['fontSize * scale >= SUBTITLE_MIN_SCREEN_PX', 'fontSize * scale >= 7', visibility],
+    ['|| scale >= fitScale * DEFAULT_VIEW_TOLERANCE', '|| false', defaultView],
   ];
   for (const [before, after, check] of mutations) {
     assert.ok(source.includes(before));
