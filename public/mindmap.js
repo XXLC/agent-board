@@ -246,7 +246,7 @@ function updateNodeText(item, elapsedText = '') {
   const rows = nodeTextRows(item.node, { elapsedText });
   const subtitles = rows.filter(row => row.kind === 'subtitle');
   while (item.subtitle.children.length > subtitles.length) item.subtitle.children[item.subtitle.children.length - 1].remove();
-  const elements = { label: item.label, counter: item.counterLabel, phase: item.phaseLabel, elapsed: item.elapsedLabel };
+  const elements = { label: item.label, counter: item.counterLabel, elapsed: item.elapsedLabel };
   for (const element of Object.values(elements)) element.textContent = '';
   let index = 0;
   for (const row of rows) {
@@ -318,15 +318,14 @@ function draw(reset = false) {
       const subtitle = shape('text', { 'text-anchor': 'middle', class: 'map-subtitle' });
       const mark = shape('text', { 'text-anchor': 'middle', y: 5, class: 'map-error-mark' });
       const crossMark = shape('path', { class: 'map-cross-mark', 'aria-hidden': 'true' });
-      const phaseLabel = shape('text', { 'text-anchor': 'middle', class: 'map-subtitle map-phase' });
       const counterLabel = shape('text', { 'text-anchor': 'middle', class: 'map-subtitle map-counter' });
       const elapsedLabel = shape('text', { 'text-anchor': 'middle', class: 'map-subtitle map-elapsed' });
       const badge = shape('g', { class: 'map-running-badge', 'aria-hidden': 'true' });
       badge.append(shape('rect', { x: -58, y: -12, width: 116, height: 24, rx: 12 }),
         shape('circle', { cx: -46, r: 3, class: 'map-badge-dot' }),
         shape('text', { 'text-anchor': 'middle', x: 5, y: 4 }));
-      group.append(title, circle, crossMark, label, subtitle, counterLabel, phaseLabel, elapsedLabel, mark, badge);
-      item = { group, circle, crossMark, title, label, subtitle, phaseLabel, counterLabel, elapsedLabel, mark, badge, node };
+      group.append(title, circle, crossMark, label, subtitle, counterLabel, elapsedLabel, mark, badge);
+      item = { group, circle, crossMark, title, label, subtitle, counterLabel, elapsedLabel, mark, badge, node };
       group.addEventListener('click', () => activate(item.node));
       group.addEventListener('keydown', event => {
         if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(item.node); }
@@ -369,7 +368,7 @@ function draw(reset = false) {
     item.circle.setAttribute('fill', status === 'quota' ? `url(#quota-${node.lane})` : fill);
     item.title.textContent = description(node, now);
     if (node.type === 'run') item.label.setAttribute('class', 'map-run-label');
-    const elapsedText = Number.isFinite(item.runningStart) ? `Đang làm: ${formatDuration(Math.max(0, now - item.runningStart))}` : '';
+    const elapsedText = Number.isFinite(item.runningStart) ? formatDuration(Math.max(0, now - item.runningStart)) : '';
     updateNodeText(item, elapsedText);
     item.mark.textContent = status === 'error' ? 'X' : '';
   }
@@ -386,7 +385,7 @@ function tick(now, forceAria = false) {
   if (accessible) lastTickAria = now;
   for (const item of nodeElements.values()) {
     const elapsed = Math.max(0, now - item.runningStart);
-    const text = Number.isFinite(item.runningStart) ? `Đang làm: ${formatDuration(elapsed)}` : '';
+    const text = Number.isFinite(item.runningStart) ? formatDuration(elapsed) : '';
     // Chỉ thay chữ đồng hồ trong ô đã dự trữ; không dựng lại nút hay đổi tọa độ dòng.
     const row = nodeTextRows(item.node, { elapsedText: text }).find(row => row.kind === 'elapsed');
     item.elapsedLabel.textContent = row?.text || '';

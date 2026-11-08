@@ -5,6 +5,8 @@ import { nodeCounters } from './counters.js';
 export { isBrowserFullscreen };
 export const MINDMAP_LANES = ['Codex', 'Opus', 'Argon'];
 const TAU = Math.PI * 2;
+// formatDuration bỏ giây từ một giờ; chữ dài hơn mức dưới 100 giờ sẽ được co.
+const ELAPSED_WIDTH = Math.max('59 phút 59 giây'.length, '99 giờ 59 phút'.length) * 6;
 const recent = (a, b) => b.start - a.start || String(a.id).localeCompare(String(b.id));
 export function leafRadius(run, now = Date.now()) {
   const seconds = Math.max(0, ((run.end ?? now) - run.start) / 1000);
@@ -17,7 +19,7 @@ export function shortenLabel(label, width = 126) {
 }
 
 // Hộp chữ bảo thủ: tiêu đề 14px, phụ đề 10px; cùng kiểu chữ trong styles.css.
-// Dự trữ 31 ký tự cho số liệu/phụ đề và cả hai dạng đồng hồ dài nhất dưới 100 giờ.
+// Dự trữ 31 ký tự cho số liệu/phụ đề và một dòng đồng hồ dài nhất dưới 100 giờ.
 // Chữ dài hơn vùng dự trữ được co bằng textLength, không làm nhảy bán kính qua SSE.
 export function nodeTextRows(node, { reserve = false, includeLive = true, elapsedText = node.elapsedText || '' } = {}) {
   const live = node.type === 'root' || node.type === 'lane';
@@ -36,9 +38,9 @@ export function nodeTextRows(node, { reserve = false, includeLive = true, elapse
       if (line || node.type === 'run') add('subtitle', line, live ? 186 : 0, live ? 186 : Infinity);
     }
     if (node.counterText || (live && reserve)) add('counter', node.counterText || '', 186, 186);
-    if (includeLive && (live || node.type === 'run')) {
-      if (node.running || (live && reserve)) add('phase', node.running ? `đang ${node.phase}` : '', 54, 54);
-      if (live && (elapsedText || reserve)) add('elapsed', elapsedText, 144, 144);
+    // Giữ một ô đồng hồ trống khi nghỉ để mọi dòng giữ chỗ và bán kính không đổi.
+    if (includeLive && live) {
+      add('elapsed', node.running ? elapsedText : '', ELAPSED_WIDTH, ELAPSED_WIDTH);
     }
   }
   const height = rows.reduce((sum, row) => sum + row.ascent + row.descent, 0) + (rows.length - 1) * 3;
@@ -91,9 +93,6 @@ export function layoutMindmap(runs, options = {}) {
       Object.assign(node, counters);
       if (node.type === 'project' && !counters.busyMs) node.counterText = '';
       const rows = nodeTextRows(node, { reserve: true });
-      // Khi nghỉ, bộ đếm xuống cuối khối chữ và cần dây cung rộng hơn tại vị trí đó.
-      // Dự trữ cả hai khối căn giữa để ẩn/hiện dòng sống không đổi bán kính.
-      if (node.type !== 'project') rows.push(...nodeTextRows(node, { reserve: true, includeLive: false }));
       node.r = nodeRadius(rows, node.r);
     }
     node.reserve = labelRadius(node);

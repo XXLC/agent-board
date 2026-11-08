@@ -25,7 +25,7 @@ test('Ẩn tab tạm dừng chuyển động, mở lại tiếp tục', () => {
   assert.equal(attrs['data-motion-paused'], 'false');
 });
 
-test('Chuyển động chỉ đổi transform, opacity; giảm chuyển động có vòng tĩnh, mũi tên và nhãn chữ', async () => {
+test('Chuyển động chỉ đổi transform, opacity; giảm chuyển động có vòng tĩnh, mũi tên và nhãn ở thẻ, thanh', async () => {
   const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   for (const [, body] of css.matchAll(/@keyframes[^{]+\{((?:[^{}]|\{[^{}]*\})*)\}/g)) {
@@ -41,6 +41,36 @@ test('Chuyển động chỉ đổi transform, opacity; giảm chuyển động 
   assert.match(reduced, /\.badge-phase \{ display:block/);
   assert.match(css, /animation-play-state:paused!important/);
   for (const label of ['Nét đứt chạy từ Claude = đang giao việc', 'Vòng tròn nhấp nháy = đang làm', 'Nét liền mảnh = đã xong']) assert.ok(html.includes(label));
+});
+
+test('Giảm chuyển động phân biệt bóng bằng halo tĩnh dày gấp đôi và nét giao có mũi tên, chấm đặc', async () => {
+  const css = await readFile(new URL('../public/styles.css', import.meta.url), 'utf8');
+  const reduced = css.slice(css.lastIndexOf('@media(prefers-reduced-motion:reduce)'));
+  const declarations = (text, selector) => {
+    const matches = [...text.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(match => match[1].split(',').some(part => part.trim() === selector));
+    assert.ok(matches.length, `Thiếu quy tắc ${selector}`);
+    return Object.fromEntries(matches.flatMap(match => match[2].split(';').filter(part => part.includes(':'))
+      .map(part => part.split(':').map(value => value.trim()))));
+  };
+  const baseWidth = Number(declarations(css, '.map-halo')['stroke-width']);
+  assert.equal(baseWidth, 2);
+  for (const type of ['root', 'lane', 'run']) {
+    const halo = declarations(reduced, `.map-${type}.activity-working .map-halo`);
+    assert.equal(halo.opacity, '1');
+    assert.equal(Number(halo['stroke-width']), baseWidth * 2);
+    assert.equal(halo['stroke-dasharray'], 'none');
+    assert.equal(halo.transform, 'scale(1.12)');
+    assert.equal(declarations(reduced, `.map-${type} .halo-1`).display, 'none!important');
+  }
+  assert.equal(declarations(reduced, '*').animation, 'none!important');
+  assert.equal(declarations(reduced, '.map-particles').display, 'none!important');
+  for (const mark of ['map-arrow', 'map-end-dot']) {
+    assert.equal(declarations(css, `.${mark}`).fill, 'var(--activity-color)');
+    assert.equal(declarations(reduced, `.map-edge.activity-delegating > .${mark}`).display, 'inline');
+    assert.doesNotMatch(reduced, new RegExp(`activity-working > \\.${mark}`));
+  }
+  assert.equal(declarations(css, '.map-flow')['stroke-dasharray'], '12 8');
 });
 
 test('CSS: hover và focus chỉ đổi vòng chính, không đụng halo hay chấm huy hiệu', async () => {

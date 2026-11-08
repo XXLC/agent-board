@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { layoutMindmap, nodeTextRows, nodeRadius } from '../public/mindmap-layout.js';
+import { formatDuration } from '../public/counters.js';
 
 const now = 1_793_577_600_000;
 const hour = 3600_000;
@@ -18,22 +19,56 @@ function assertInside(rows, radius) {
   }
 }
 
+test('Gốc, làn và lá không có dòng chữ pha kể cả khi dự trữ, đang giao hoặc đang làm', () => {
+  for (const type of ['root', 'lane', 'run']) for (const phase of ['giao', 'làm']) for (const reserve of [false, true]) {
+    const rows = nodeTextRows({ type, label: 'Nhãn tổng hợp', subtitle: 'Phụ đề tổng hợp', r: 18,
+      running: 1, phase, elapsedText: '42 giây' }, { reserve });
+    assert.ok(rows.every(row => row.kind !== 'phase'));
+    assert.ok(rows.every(row => !/đang (?:làm|giao)/i.test(row.text)));
+    if (type === 'run') assert.deepEqual(rows.map(row => row.kind), ['label', 'subtitle']);
+  }
+});
+
+test('Bán kính gốc và làn chỉ dự trữ một dòng sống, đủ mọi định dạng đồng hồ dưới 100 giờ', () => {
+  const durations = [0, 42_000, 59_999, 60_000, 425_000, 3_599_999, 3_600_000, 3_780_000, 100 * hour - 1];
+  for (const type of ['root', 'lane']) {
+    const node = { type, label: 'Nhãn tổng hợp', subtitle: 'Phụ đề tổng hợp', counterText: '1 giờ · 2,0 triệu token' };
+    const reserved = nodeTextRows(node, { reserve: true });
+    const withoutLive = nodeTextRows(node, { reserve: true, includeLive: false });
+    assert.equal(reserved.length - withoutLive.length, 1, 'Chỉ dự trữ một dòng sống');
+    assert.equal(reserved.at(-1).kind, 'elapsed');
+    const width = Math.max(...durations.map(ms => formatDuration(ms).length * 6));
+    assert.equal(reserved.at(-1).width, width, 'Không dự trữ thêm tiền tố hay chữ pha');
+    const radius = nodeRadius(reserved, 64);
+    const idle = nodeTextRows({ ...node, running: 0, elapsedText: '42 giây' });
+    assert.equal(idle.length, reserved.length);
+    assert.equal(idle.at(-1).text, '', 'Khi nghỉ giữ ô đồng hồ trống');
+    assertInside(idle, radius);
+    for (const ms of [...durations, 1e15]) {
+      const running = { ...node, running: 1, elapsedText: formatDuration(ms) };
+      const rows = nodeTextRows(running);
+      assert.equal(rows.at(-1).text, formatDuration(ms));
+      assertInside(rows, radius);
+      assert.equal(nodeRadius(nodeTextRows(running, { reserve: true }), 64), radius);
+    }
+  }
+});
+
 for (const type of ['root', 'lane']) {
-  for (let count = 1; count <= (type === 'root' ? 7 : 3); count++) {
+  for (let count = 1; count <= (type === 'root' ? 7 : 5); count++) {
     for (const counterText of ['', '3 giờ · 179,6 triệu token']) {
       test(`Khối chữ ${type === 'root' ? 'gốc' : 'làn'}, ${count} phụ đề, ${counterText ? 'có' : 'không có'} bộ đếm vừa lề 6`, () => {
         const node = { type, label: type === 'root' ? 'Claude Code' : 'Codex',
           subtitleLines: Array.from({ length: count }, (_, i) => `Model tổng hợp ${i + 1} x 12`),
-          counterText, running: 1, phase: 'làm', elapsedText: 'Đang làm: 10 phút' };
+          counterText, running: 1, phase: 'làm', elapsedText: '10 phút 0 giây' };
         const base = type === 'root' ? 70 : 64;
         const reserved = nodeTextRows(node, { reserve: true });
-        reserved.push(...nodeTextRows(node, { reserve: true, includeLive: false }));
         const radius = nodeRadius(reserved, base);
         const rows = nodeTextRows(node);
         assertInside(reserved, radius);
         assertInside(rows, radius);
-        assert.equal(rows.length, count + (counterText ? 4 : 3));
-        assert.deepEqual(rows.map(row => row.kind), ['label', ...Array(count).fill('subtitle'), ...(counterText ? ['counter'] : []), 'phase', 'elapsed']);
+        assert.equal(rows.length, count + (counterText ? 3 : 2));
+        assert.deepEqual(rows.map(row => row.kind), ['label', ...Array(count).fill('subtitle'), ...(counterText ? ['counter'] : []), 'elapsed']);
         assert.equal(rows[0].top + rows.at(-1).bottom, 0, 'Khối chữ hiển thị phải căn giữa');
         for (let i = 1; i < rows.length; i++) assert.equal(rows[i].top - rows[i - 1].bottom, 3);
         if (radius > base) assert.ok(reserved.some(row => {
@@ -50,12 +85,12 @@ test('Bán kính ổn định từ nghỉ sang giao, làm, đổi đồng hồ v
     const node = { type, label: 'Nút tổng hợp', subtitleLines: ['12 lần giao, 2 chạy'], counterText: '1 giờ · 23,0 triệu token' };
     const variants = [
       { running: 0, elapsedText: '' },
-      { running: 1, phase: 'giao', elapsedText: 'Đang làm: 9 phút' },
-      { running: 1, phase: 'làm', elapsedText: 'Đang làm: 10 phút' },
-      { running: 1, phase: 'làm', elapsedText: 'Đang làm: 99 giờ 59 phút', counterText: '30 giờ · 999,9 triệu token' },
-      { running: 1, phase: 'làm', elapsedText: 'Đang làm: 59 phút 59 giây', subtitleLines: ['999 lần giao, 999 chạy'] },
+      { running: 1, phase: 'giao', elapsedText: '9 phút 0 giây' },
+      { running: 1, phase: 'làm', elapsedText: '10 phút 0 giây' },
+      { running: 1, phase: 'làm', elapsedText: '99 giờ 59 phút', counterText: '30 giờ · 999,9 triệu token' },
+      { running: 1, phase: 'làm', elapsedText: '59 phút 59 giây', subtitleLines: ['999 lần giao, 999 chạy'] },
     ].map(value => ({ ...node, ...value }));
-    const reserved = value => [...nodeTextRows(value, { reserve: true }), ...nodeTextRows(value, { reserve: true, includeLive: false })];
+    const reserved = value => nodeTextRows(value, { reserve: true });
     const radii = variants.map(value => nodeRadius(reserved(value), type === 'root' ? 70 : 64));
     assert.ok(radii.every(radius => radius === radii[0]));
     const positions = value => nodeTextRows(value).map(({ kind, y }) => [kind, y]);
@@ -64,6 +99,7 @@ test('Bán kính ổn định từ nghỉ sang giao, làm, đổi đồng hồ v
       assert.equal(rows[0].top + rows.at(-1).bottom, 0);
       assertInside(rows, radii[0]);
     }
+    assert.deepEqual(positions(variants[0]), positions(variants[1]));
     assert.deepEqual(positions(variants[1]), positions(variants[2]));
     assert.ok(nodeRadius(reserved({ ...node, subtitleLines: ['Một', 'Hai'] }), 70) > radii[0]);
   }
@@ -72,19 +108,19 @@ test('Bán kính ổn định từ nghỉ sang giao, làm, đổi đồng hồ v
 test('Nút gốc và làn dùng cùng tọa độ, cỡ hộp và dự trữ cho cùng số dòng', () => {
   for (let count = 1; count <= 3; count++) {
     const node = { label: 'Nhãn tổng hợp', subtitleLines: Array(count).fill('Phụ đề tổng hợp'),
-      counterText: '1 giờ · 23,0 triệu token', running: 1, phase: 'làm', elapsedText: 'Đang làm: 11 phút' };
+      counterText: '1 giờ · 23,0 triệu token', running: 1, phase: 'làm', elapsedText: '11 phút 0 giây' };
     assert.deepEqual(nodeTextRows({ ...node, type: 'root' }), nodeTextRows({ ...node, type: 'lane' }));
   }
 });
 
-test('Bán kính thực của bố cục chứa ca gốc sáu dòng và làn năm dòng từng bị tràn', () => {
+test('Bán kính thực chứa ca gốc nhiều model và làn từng bị tràn sau khi bớt một dòng pha', () => {
   const layout = layoutMindmap([run('làn', { running: true, end: null }), run('gốc', {
     lane: 'Claude', model: 'claude-sonnet-5-5', running: true, end: null,
   })], { now, claudeModels: ['claude-opus-5-5'] });
   for (const id of ['root', 'lane:Codex']) {
     const node = layout.nodes.find(node => node.id === id);
-    const rows = nodeTextRows(node, { elapsedText: id === 'root' ? 'Đang làm: 18 phút' : 'Đang làm: 11 phút' });
-    assert.equal(rows.length, id === 'root' ? 6 : 5);
+    const rows = nodeTextRows(node, { elapsedText: id === 'root' ? '18 phút 0 giây' : '11 phút 0 giây' });
+    assert.equal(rows.length, id === 'root' ? 5 : 4);
     assertInside(rows, node.r);
     assertInside(nodeTextRows(node, { reserve: true }), node.r);
     assert.ok(node.r > (id === 'root' ? 70 : 64));

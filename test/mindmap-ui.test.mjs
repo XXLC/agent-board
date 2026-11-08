@@ -14,7 +14,7 @@ function board() {
   class Clock extends Date { static now() { return clock; } }
   const ids = new Map(), windowEvents = new Map();
   class Node {
-    constructor() { this.children = []; this.attributes = {}; this.events = {}; this.textContent = ''; }
+    constructor(tagName) { this.tagName = tagName; this.children = []; this.attributes = {}; this.events = {}; this.textContent = ''; }
     setAttribute(key, value) { this.attributes[key] = String(value); }
     append(...children) { for (const child of children) { child.parent = this; this.children.push(child); } }
     replaceChildren(...children) { this.children = []; this.append(...children); }
@@ -27,7 +27,7 @@ function board() {
   }
   const document = {
     addEventListener() {},
-    createElementNS: () => new Node(),
+    createElementNS: (_, tagName) => new Node(tagName),
     getElementById(id) { if (!ids.has(id)) ids.set(id, new Node()); return ids.get(id); },
   };
   const window = {
@@ -44,6 +44,17 @@ const sample = {
   id: 'tổng-hợp', lane: 'Codex', kind: 'giao việc', projectKey: 'dự-án', projectLabel: 'Dự án',
   start: Date.now() - 60_000, end: null, running: true, prompt: 'Lời nhắc tổng hợp', status: 'unknown',
 };
+
+function assertNoPhase(item) {
+  assert.equal(item.phaseLabel, undefined, 'Không được dựng phần tử nhãn pha');
+  const inspect = node => {
+    assert.doesNotMatch(node.attributes.class || '', /\bmap-phase\b/);
+    if (node.tagName === 'title') return;
+    assert.doesNotMatch(node.textContent, /đang (?:làm|giao)/i, 'Chữ nhìn thấy trong bóng không được có nhãn pha');
+    for (const child of node.children) inspect(child);
+  };
+  inspect(item.group);
+}
 
 test('Phụ đề làn, gốc Claude và tooltip lá có token đúng khoảng, SSE chỉ đổi chữ và giữ bố cục', () => {
   const ui = board(), now = ui.evaluate('Date.now()');
@@ -77,7 +88,7 @@ test('Nhịp sơ đồ chỉ đổi textContent, không dựng hay bố cục; a
   const view = ui.ids.get('mindmap').attributes.viewBox;
   ui.evaluate("draw = () => { throw new Error('Không được vẽ lại'); }; layoutMindmap = () => { throw new Error('Không được tính bố cục'); };");
   ui.advance(1000); ui.window.boardMindmap.tick(ui.evaluate('Date.now()'));
-  assert.equal(lane.elapsedLabel.textContent, 'Đang làm: 1 phút 11 giây');
+  assert.equal(lane.elapsedLabel.textContent, '1 phút 11 giây');
   assert.equal(lane.group.attributes['aria-label'], aria);
   assert.deepEqual(lane.group.children, childRefs);
   assert.equal(lane.group.attributes.transform, position); assert.equal(ui.ids.get('mindmap').attributes.viewBox, view);
@@ -88,6 +99,34 @@ test('Nhịp sơ đồ chỉ đổi textContent, không dựng hay bố cục; a
   assert.equal(lane.elapsedLabel.textContent, text);
   ui.evaluate('document.hidden = false; active = false'); ui.advance(1000); ui.window.boardMindmap.tick(ui.evaluate('Date.now()'));
   assert.equal(lane.elapsedLabel.textContent, text);
+});
+
+test('Đồng hồ bóng chỉ hiện thời lượng khi vẽ và tick, đúng các ranh giới rồi trống khi nghỉ', () => {
+  const ui = board(), now = ui.evaluate('Date.now()');
+  const cases = [[0, '0 giây'], [42_000, '42 giây'], [59_999, '59 giây'], [60_000, '1 phút 0 giây'],
+    [425_000, '7 phút 5 giây'], [3_599_999, '59 phút 59 giây'], [3_600_000, '1 giờ 0 phút'],
+    [3_780_000, '1 giờ 3 phút'], [100 * 3_600_000 - 1, '99 giờ 59 phút']];
+  let items;
+  for (const [ms, expected] of cases) {
+    const run = { ...sample, start: now - ms };
+    const claude = { ...run, lane: 'Claude', id: 'gốc', model: 'claude-sonnet-5-5' };
+    ui.window.boardMindmap.update([run], () => {}, 'đồng-hồ', [claude]);
+    items = [ui.evaluate("nodeElements.get('root')"), ui.evaluate("nodeElements.get('lane:Codex')")];
+    for (const item of items) {
+      assert.equal(item.elapsedLabel.textContent, expected, 'Lúc vẽ không được có tiền tố');
+      assertNoPhase(item);
+      // Đổi chữ trước nhịp để chứng minh tick thực sự cập nhật cùng phần tử.
+      item.elapsedLabel.textContent = '';
+    }
+    ui.window.boardMindmap.tick(now);
+    for (const item of items) assert.equal(item.elapsedLabel.textContent, expected, 'Lúc tick không được có tiền tố');
+  }
+  ui.window.boardMindmap.update([{ ...sample, running: false, end: now }], () => {}, 'đồng-hồ');
+  ui.window.boardMindmap.tick(now + 1000);
+  for (const item of items) {
+    assert.equal(item.elapsedLabel.textContent, '');
+    assertNoPhase(item);
+  }
 });
 
 test('Cập nhật trực tiếp giữ DOM, viewBox, vị trí và trạng thái thu gọn; bàn phím mở chi tiết', () => {
@@ -177,6 +216,7 @@ test('Giao chuyển sang làm rồi xong giữ phần tử, vị trí, halo và 
   update(run);
   const leaf = ui.evaluate("nodeElements.get('run:tổng-hợp')");
   const lane = ui.evaluate("nodeElements.get('lane:Codex')");
+  const root = ui.evaluate("nodeElements.get('root')");
   const edge = ui.evaluate("edgeElements.get('root>lane:Codex')");
   const packet = edge.particles.children[0], halo = leaf.halos[0];
   const position = leaf.group.attributes.transform;
@@ -185,10 +225,12 @@ test('Giao chuyển sang làm rồi xong giữ phần tử, vị trí, halo và 
   assert.equal(edge.particles.children.length, 3);
   assert.equal(edge.line.attributes['stroke-width'], '3');
   assert.equal(leaf.halos.length, 2); assert.equal(lane.halos.length, 2);
-  for (const item of [leaf, lane]) {
+  for (const item of [leaf, lane, root]) {
+    assert.equal(item.halos.length, 2);
     assert.match(item.group.attributes.class, /activity-working.*activity-delegating/);
     assert.match(item.group.attributes['aria-label'], /đang giao/);
-    assert.equal(item.phaseLabel.textContent, 'đang giao');
+    assert.match(item.title.textContent, /đang giao/);
+    assertNoPhase(item);
   }
   assert.match(leaf.title.textContent, /vừa gửi 12 giây trước/);
   assert.equal(ui.evaluate("[...edgeElements.values()].filter(item => item.particles).length"), 1);
@@ -196,7 +238,6 @@ test('Giao chuyển sang làm rồi xong giữ phần tử, vị trí, halo và 
     assert.match(ui.evaluate(`edgeElements.get('${id}').group.attributes.class`), /activity-working/);
     assert.equal(ui.evaluate(`edgeElements.get('${id}').line.attributes['stroke-width']`), '2');
   }
-  const root = ui.evaluate("nodeElements.get('root')");
   const waveClass = root.group.attributes.class;
   update(run); assert.equal(root.group.attributes.class, waveClass);
   ui.advance(34000); update(run);
@@ -206,11 +247,15 @@ test('Giao chuyển sang làm rồi xong giữ phần tử, vị trí, halo và 
   assert.match(leaf.group.attributes.class, /activity-working/);
   assert.doesNotMatch(leaf.group.attributes.class, /activity-delegating/);
   assert.match(leaf.group.attributes['aria-label'], /đang làm/);
-  assert.equal(leaf.phaseLabel.textContent, 'đang làm');
+  for (const item of [leaf, lane, root]) {
+    assert.match(item.group.attributes['aria-label'], /đang làm/);
+    assert.match(item.title.textContent, /đang làm/);
+    assertNoPhase(item);
+  }
   update({ ...run, running: false, end: run.start + 46000, status: 'ok' });
   assert.doesNotMatch(edge.group.attributes.class, /activity-working|activity-delegating/);
   assert.doesNotMatch(leaf.group.attributes.class, /activity-working|activity-delegating/);
-  assert.equal(leaf.phaseLabel.textContent, '');
+  assertNoPhase(leaf);
   assert.equal(lane.badge.attributes.display, 'none');
   assert.equal(edge.line.attributes['stroke-width'], '1.2');
   assert.equal(ui.evaluate("nodeElements.get('run:tổng-hợp')"), leaf);
@@ -307,7 +352,7 @@ test('Sơ đồ hiển thị dấu giao chéo trên lá, số lần giao chéo t
   assert.equal(projectNode.group.attributes.transform, projectTransform);
 });
 
-test('Bóng Claude ở giữa có halo và nhãn "đang làm" khi Claude đang chạy, tắt khi xong', () => {
+test('Bóng Claude có halo, chỉ nêu pha trong trợ năng khi đang chạy, tắt khi xong', () => {
   const ui = board();
   const now = ui.evaluate('Date.now()');
   const running = { lane: 'Claude', id: 'claude-chạy', kind: 'hoạt động', model: 'claude-sonnet-5-5', sourceSession: 's', running: true, start: now - 300_000, end: null };
@@ -315,17 +360,20 @@ test('Bóng Claude ở giữa có halo và nhãn "đang làm" khi Claude đang c
   const root = ui.evaluate("nodeElements.get('root')");
   assert.match(root.group.attributes.class, /activity-working/);
   assert.equal(root.halos?.length, 2, 'nút gốc phải có hai vòng halo khi Claude đang chạy');
-  assert.equal(root.phaseLabel.textContent, 'đang làm');
+  assertNoPhase(root);
+  assert.match(root.title.textContent, /đang làm/);
+  assert.match(root.group.attributes['aria-label'], /đang làm/);
   assert.match(root.group.attributes.class, /^((?!root-wave).)*$/, 'không có lần giao mới nên không phát gợn sóng');
   // Danh sách model đã dùng có Opus 5.5 dù khung chưa có đoạn Opus.
   assert.match(ui.evaluate("nodeElements.get('root').group.attributes['aria-label']"), /Sonnet 5\.5 x 1.*Opus 5\.5 x 0/);
   // Claude xong: tắt hiệu ứng.
   ui.window.boardMindmap.update([], () => {}, 'gốc-chạy', [{ ...running, running: false, end: now - 1000 }], ['claude-sonnet-5-5', 'claude-opus-5-5']);
   assert.doesNotMatch(root.group.attributes.class, /activity-working/);
-  assert.equal(root.phaseLabel.textContent, '');
+  assertNoPhase(root);
+  assert.equal(root.elapsedLabel.textContent, '');
 });
 
-test('Nhãn "đang làm" của nút gốc nằm dưới mọi dòng phụ đề, không đè lên dòng model cuối', () => {
+test('Đồng hồ nút gốc nằm dưới mọi dòng phụ đề và bộ đếm, không có nhãn pha', () => {
   const ui = board();
   const now = ui.evaluate('Date.now()');
   const running = { lane: 'Claude', id: 'claude-chạy', kind: 'hoạt động', model: 'claude-sonnet-5-5', sourceSession: 's', running: true, start: now - 300_000, end: null };
@@ -333,18 +381,19 @@ test('Nhãn "đang làm" của nút gốc nằm dưới mọi dòng phụ đề,
     ui.window.boardMindmap.update([], () => {}, `nhãn-${models.length}`, [running], models);
     const root = ui.evaluate("nodeElements.get('root')");
     const lines = root.subtitle.children.length;
-    return { lines, lastY: Number(root.subtitle.children.at(-1).attributes.y), phaseY: Number(root.phaseLabel.attributes.y) };
+    assertNoPhase(root);
+    return { lines, lastY: Number(root.subtitle.children.at(-1).attributes.y), elapsedY: Number(root.elapsedLabel.attributes.y) };
   };
-  // Khối chữ căn giữa; pha phải nằm sau cả dòng bộ đếm mới.
+  // Khối chữ căn giữa; đồng hồ phải nằm sau cả dòng bộ đếm.
   const one = lineY([]);
-  assert.equal(one.lines, 1); assert.ok(one.phaseY - one.lastY >= 32);
+  assert.equal(one.lines, 1); assert.equal(one.elapsedY - one.lastY, 32);
   const two = lineY(['claude-opus-5-5']);
   assert.equal(two.lines, 2);
-  assert.ok(two.phaseY - two.lastY >= 32, 'nhãn pha đè lên dòng phụ đề cuối');
+  assert.equal(two.elapsedY - two.lastY, 32, 'Đồng hồ đè lên dòng phụ đề cuối');
   const three = lineY(['claude-opus-5-5', 'claude-haiku-5-5']);
   assert.equal(three.lines, 3);
-  assert.ok(three.phaseY - three.lastY >= 32);
-  assert.ok(three.phaseY > two.phaseY && two.phaseY > one.phaseY);
+  assert.equal(three.elapsedY - three.lastY, 32);
+  assert.ok(three.elapsedY > two.elapsedY && two.elapsedY > one.elapsedY);
 });
 
 test('DOM xếp mọi dòng đúng hàm thuần, giữ vòng tròn và phần tử qua SSE, nghỉ và đồng hồ 9 sang 10 phút', () => {
@@ -357,7 +406,7 @@ test('DOM xếp mọi dòng đúng hàm thuần, giữ vòng tròn và phần t�
   const project = ui.evaluate("nodeElements.get('project:Codex:dự-án')");
   const compareRows = item => {
     const rows = nodeTextRows(item.node, { elapsedText: item.elapsedLabel.textContent });
-    const elements = { label: item.label, counter: item.counterLabel, phase: item.phaseLabel, elapsed: item.elapsedLabel };
+    const elements = { label: item.label, counter: item.counterLabel, elapsed: item.elapsedLabel };
     let subtitle = 0;
     for (const row of rows) {
       const element = row.kind === 'subtitle' ? item.subtitle.children[subtitle++] : elements[row.kind];
@@ -368,8 +417,7 @@ test('DOM xếp mọi dòng đúng hàm thuần, giữ vòng tròn và phần t�
     const subtitleY = rows.filter(row => row.kind === 'subtitle').at(-1).y;
     assert.ok(subtitleY < Number(item.counterLabel.attributes.y));
     if (item.node.type !== 'project' && item.node.running) {
-      assert.ok(Number(item.counterLabel.attributes.y) < Number(item.phaseLabel.attributes.y));
-      assert.ok(Number(item.phaseLabel.attributes.y) < Number(item.elapsedLabel.attributes.y));
+      assert.ok(Number(item.counterLabel.attributes.y) < Number(item.elapsedLabel.attributes.y));
     }
   };
   for (const item of [root, lane, project]) compareRows(item);
@@ -380,7 +428,7 @@ test('DOM xếp mọi dòng đúng hàm thuần, giữ vòng tròn và phần t�
   ui.ids.get('map-zoom-in').events.click();
   const view = ui.ids.get('mindmap').attributes.viewBox;
   ui.advance(60_000); ui.window.boardMindmap.tick(ui.evaluate('Date.now()'));
-  assert.equal(lane.elapsedLabel.textContent, 'Đang làm: 10 phút 0 giây');
+  assert.equal(lane.elapsedLabel.textContent, '10 phút 0 giây');
   update({ ...run, tokens: { total: 179_600_000 } }, claude);
   update({ ...run, running: false, end: now }, { ...claude, running: false, end: now });
   for (const { item, radius, position, children, subtitles } of before) {
@@ -392,7 +440,7 @@ test('DOM xếp mọi dòng đúng hàm thuần, giữ vòng tròn và phần t�
     compareRows(item);
   }
   assert.equal(ui.ids.get('mindmap').attributes.viewBox, view);
-  assert.equal(lane.phaseLabel.textContent, ''); assert.equal(lane.elapsedLabel.textContent, '');
+  assertNoPhase(lane); assert.equal(lane.elapsedLabel.textContent, '');
 });
 
 test('DOM bộ đếm dự án có hợp khoảng, độ phủ, token agy và cập nhật bốn khoảng thời gian', () => {
