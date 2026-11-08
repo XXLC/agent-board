@@ -887,19 +887,27 @@ footer p {
 }
 
 .map-root > text {
-  font-size:22px;
+  font-size:28px;
 }
 
 .map-lane > text {
-  font-size:18px;
+  font-size:22px;
 }
 
 .map-project > text {
+  font-size:19px;
+}
+
+.map-root .map-subtitle {
+  font-size:18px;
+}
+
+.map-lane .map-subtitle {
   font-size:15px;
 }
 
 .map-project .map-subtitle {
-  font-size:12px;
+  font-size:14px;
 }
 
 .map-node .map-error-mark {

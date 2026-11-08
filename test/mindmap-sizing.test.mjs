@@ -27,10 +27,60 @@ function hierarchy(layout) {
 
 function inside(row, radius, fontSize = row.fontSize) {
   const edge = Math.max(Math.abs(row.y - fontSize), Math.abs(row.y + fontSize * .28));
-  const width = row.width * fontSize / row.fontSize;
+  const width = sizing.fittedTextWidth(row, radius, fontSize);
   assert.ok(edge + 6 <= radius + 1e-8, 'Chữ vượt lề dọc 6');
   assert.ok(Math.hypot(width / 2 + 6, edge) <= radius + 1e-8, 'Chữ vượt dây cung có lề 6');
 }
+
+function fontHierarchy(api) {
+  const rows = type => api.nodeTextRows({ type, label: 'Nhãn mẫu', subtitle: 'Model mẫu', counterText: '1 giờ', running: 1 });
+  const [root, lane, project] = ['root', 'lane', 'project'].map(rows);
+  assert.deepEqual([root[0].fontSize, lane[0].fontSize, project[0].fontSize], [28, 22, 19]);
+  for (const kind of ['label', 'counter']) {
+    const sizes = [root, lane, project].map(rows => rows.find(row => row.kind === kind).fontSize);
+    assert.ok(sizes[0] > sizes[1] && sizes[1] > sizes[2]);
+  }
+  for (const kind of ['subtitle', 'elapsed']) {
+    assert.equal(root.find(row => row.kind === kind).fontSize, 18);
+    assert.equal(lane.find(row => row.kind === kind).fontSize, 15);
+    assert.ok(lane.find(row => row.kind === kind).fontSize > project.at(-1).fontSize);
+  }
+  assert.equal(project.at(-1).fontSize, 14);
+  assert.ok([...root, ...lane, ...project].every(row => row.maxFontSize >= row.fontSize));
+}
+
+test('Cỡ chữ tiêu đề, phụ đề, bộ đếm và đồng hồ giữ thứ bậc gốc, làn, dự án', () => fontHierarchy(sizing));
+
+test('Nhãn dự án ngắn dùng đủ chiều rộng ở cỡ 19, nhãn dài lấy số ký tự tối đa vừa ô', () => {
+  const label = 'M015_DuAnMau1';
+  assert.equal(Array.from(label).length, 13);
+  const layout = sizing.layoutMindmap([{ ...samples(1)[0], projectLabel: label }], { now });
+  const project = layout.nodes.find(node => node.type === 'project');
+  assert.equal(project.label, label);
+  const row = sizing.nodeTextRows(project)[0];
+  inside(row, project.r);
+  const short = sizing.shortenLabel('Tên dự án tổng hợp rất dài '.repeat(50));
+  assert.ok(short.endsWith('...'));
+  assert.ok(sizing.textWidth(short, 19) <= 156);
+  assert.ok(sizing.textWidth(short + 'a', 19) > 156);
+});
+
+test('Khối chữ xấu nhất vẫn vừa lề 6 tại bán kính có trần, cả trước và sau bù chữ', () => {
+  for (const type of ['root', 'lane', 'project']) {
+    const node = { type, label: type === 'project' ? sizing.shortenLabel('Nhãn dài '.repeat(100)) : 'Model tổng hợp',
+      subtitleLines: Array.from({ length: type === 'root' ? 80 : 5 }, () => 'Model rất dài '.repeat(100)),
+      counterText: '999999999999 giờ · 999999999999 tỷ token', running: 1, elapsedText: '999999999999 giờ' };
+    const reserved = sizing.nodeTextRows(node, { reserve: true });
+    const radius = sizing.boundedNodeRadius(reserved, type);
+    for (const row of reserved) inside(row, radius);
+    for (const row of sizing.nodeTextRows(node)) {
+      inside(row, radius);
+      assert.ok(row.width <= sizing.textWidth(row.text, row.fontSize));
+      if (row.textLength !== undefined) assert.ok(row.textLength < sizing.textWidth(row.text, row.fontSize));
+      for (const scale of [.18, .46, 1, 2]) inside(row, radius, sizing.compensatedFont(row, radius, scale, type));
+    }
+  }
+});
 
 test('Thuộc tính thứ bậc, trần và chữ vừa bóng với tên dài, nhiều model, số lớn, 1 đến 500 lần giao', () => {
   for (const [seed, count] of [1, 2, 6, 17, 49, 120, 241, 500].entries()) {
@@ -61,7 +111,7 @@ function cap(api) {
 test('Trần dự án chặn nội dung vượt dự trữ', () => cap(sizing));
 
 function compensation(api) {
-  const node = { type: 'project', label: 'Dự án mẫu', counterText: '999999 giờ · 999999 tỷ token', r: 82.2 };
+  const node = { type: 'project', label: 'Dự án mẫu', counterText: '999999 giờ · 999999 tỷ token', r: 90 };
   const rows = api.nodeTextRows(node);
   for (const scale of [.18, .265, .73, 1, 2]) {
     for (const row of rows) {
@@ -69,10 +119,10 @@ function compensation(api) {
       assert.ok(font >= row.fontSize - 1e-8);
       assert.ok(font <= row.maxFontSize);
       if (row.kind === 'label') {
-        assert.ok(font <= Math.max(15, 10 / scale));
-        if (scale >= .73) assert.equal(font, 15);
-        else assert.ok(font > 15);
-      } else assert.equal(font, 12);
+        assert.ok(font <= Math.max(19, 10 / scale));
+        if (scale >= 10 / 19) assert.equal(font, 19);
+        else assert.ok(font > 19);
+      } else assert.equal(font, 14);
       inside(row, node.r, font);
     }
   }
@@ -137,11 +187,12 @@ test('Làn lệch tải ở 24 giờ vẫn đủ 12 px cho gốc, làn và 10 px
   }
 });
 
-test('Ba đột biến bị kiểm thử mới bắt: bỏ trần, bỏ chặn cỡ chữ, hạ ngưỡng ẩn', async () => {
+test('Đột biến sai thứ bậc, bỏ trần, bỏ chặn cỡ chữ và sai ngưỡng hiện dòng phụ đều bị bắt', async () => {
   const source = await readFile(new URL('../public/mindmap-layout.js', import.meta.url), 'utf8');
   const mutations = [
+    ['root: 28, lane: 22, project: 19', 'root: 22, lane: 28, project: 19', fontHierarchy],
     ['return Math.min(limits.max, nodeRadius(rows, limits.min));', 'return nodeRadius(rows, limits.min);', cap],
-    ['return Math.min(wanted, row.maxFontSize, widthCap);', 'return wanted;', compensation],
+    ['return Math.max(0, Math.min(wanted, row.maxFontSize, heightCap));', 'return wanted;', compensation],
     ['fontSize * scale >= SUBTITLE_MIN_SCREEN_PX', 'fontSize * scale >= 7', visibility],
     ['|| scale >= fitScale * DEFAULT_VIEW_TOLERANCE', '|| false', defaultView],
   ];

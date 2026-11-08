@@ -2,14 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { layoutMindmap, nodeTextRows, compensatedFont, rowVisible } from '../public/mindmap-layout.js';
+import { layoutMindmap, nodeTextRows, compensatedFont, fittedTextWidth, textWidth, rowVisible } from '../public/mindmap-layout.js';
 import * as modelLabels from '../public/model-labels.js';
 import * as activity from '../public/activity.js';
 import * as counters from '../public/counters.js';
 import { createWakeLock } from '../public/wake-lock.js';
 
 const source = (await readFile(new URL('../public/mindmap.js', import.meta.url), 'utf8')).replace(/^import .*\r?\n/gm, '');
-function board(box = { width: 390, height: 460 }) {
+function board(box = { width: 390, height: 460 }, script = source) {
   let clock = Date.now();
   class Clock extends Date { static now() { return clock; } }
   const ids = new Map(), windowEvents = new Map();
@@ -18,6 +18,7 @@ function board(box = { width: 390, height: 460 }) {
     setAttribute(key, value) { this.attributes[key] = String(value); }
     append(...children) { for (const child of children) { child.parent = this; this.children.push(child); } }
     replaceChildren(...children) { this.children = []; this.append(...children); }
+    removeAttribute(key) { delete this.attributes[key]; }
     remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
     addEventListener(key, handler) { this.events[key] = handler; }
     getBoundingClientRect() { return { x: 0, y: 0, left: 0, top: 0, ...box }; }
@@ -35,8 +36,8 @@ function board(box = { width: 390, height: 460 }) {
   };
   const location = { hash: '#so-do' };
   const context = vm.createContext({ ...modelLabels, ...activity, ...counters, createWakeLock, document, window, location,
-    Event: class {}, layoutMindmap, nodeTextRows, compensatedFont, rowVisible, Date: Clock });
-  vm.runInContext(source, context);
+    Event: class {}, layoutMindmap, nodeTextRows, compensatedFont, fittedTextWidth, textWidth, rowVisible, Date: Clock });
+  vm.runInContext(script, context);
   const evaluate = code => vm.runInContext(code, context);
   return { ids, window, windowEvents, location, evaluate, advance(ms) { clock += ms; } };
 }
@@ -44,6 +45,87 @@ const sample = {
   id: 'tổng-hợp', lane: 'Codex', kind: 'giao việc', projectKey: 'dự-án', projectLabel: 'Dự án',
   start: Date.now() - 60_000, end: null, running: true, prompt: 'Lời nhắc tổng hợp', status: 'unknown',
 };
+
+function assertTextWidth(element, row, fontSize, radius) {
+  const natural = textWidth(row.text, fontSize);
+  const maximum = fittedTextWidth(row, radius, fontSize);
+  if (natural > maximum) {
+    assert.ok(Math.abs(Number(element.attributes.textLength) - maximum) < 1e-8);
+    assert.ok(Number(element.attributes.textLength) <= natural);
+    assert.equal(element.attributes.lengthAdjust, 'spacingAndGlyphs');
+  } else {
+    assert.equal(element.attributes.textLength, undefined, 'Chữ vừa ô phải giữ chiều rộng tự nhiên');
+    assert.equal(element.attributes.lengthAdjust, undefined);
+  }
+}
+
+function naturalRows(script = source) {
+  const ui = board({ width: 1280, height: 760 }, script);
+  ui.window.boardMindmap.update([{ ...sample, projectLabel: 'Dự án mẫu' }], () => {}, 'chiều rộng');
+  ui.evaluate(`
+    for (const item of nodeElements.values()) {
+      if (!['root', 'lane', 'project'].includes(item.node.type)) continue;
+      item.node.counterText = '999999999999999 giờ · 999999999999999 tỷ token';
+      updateNodeText(item, '999999999999999 giờ');
+    }
+  `);
+  let compressed = 0, natural = 0;
+  const check = () => {
+    for (const item of ui.evaluate('[...nodeElements.values()]')) {
+      if (!['root', 'lane', 'project'].includes(item.node.type)) continue;
+      for (const { row, element } of item.textRows) {
+        const font = Number(element.attributes.style.split(':')[1].replace('px', ''));
+        assertTextWidth(element, row, font, item.node.r);
+        if (element.attributes.textLength === undefined) natural++; else compressed++;
+      }
+    }
+  };
+  check();
+  for (const action of ['map-zoom-out', 'map-zoom-in', 'map-center']) {
+    ui.ids.get(action).events.click(); check();
+  }
+  ui.advance(1000); ui.window.boardMindmap.tick(ui.evaluate('Date.now()')); check();
+  assert.ok(compressed > 0 && natural > 0, 'Phải kiểm cả hàng vừa ô và hàng cần nén');
+}
+
+test('Hàng vừa ô không có thuộc tính ép chữ, hàng dài chỉ nén khi dựng, thu phóng và chạy đồng hồ', () => naturalRows());
+
+test('Chiều rộng đo thực được ưu tiên, bỏ giới hạn cũ trước khi đo và gỡ nén khi chữ ngắn lại', () => {
+  const ui = board();
+  ui.window.boardMindmap.update([sample], () => {}, 'đo thực');
+  const item = ui.evaluate("nodeElements.get('project:Codex:dự-án')");
+  const entry = item.textRows[0], { row, element } = entry;
+  let measured = 400;
+  element.getComputedTextLength = () => {
+    assert.equal(element.attributes.textLength, undefined);
+    assert.equal(element.attributes.lengthAdjust, undefined);
+    return measured;
+  };
+  const constrain = () => ui.evaluate(`{
+    const item = nodeElements.get('project:Codex:dự-án');
+    constrainText(item.label, item.textRows[0].row, item.node.r);
+  }`);
+  constrain();
+  assert.equal(Number(element.attributes.textLength), fittedTextWidth(row, item.node.r));
+  assert.ok(Number(element.attributes.textLength) < measured);
+  measured = 20; constrain();
+  assert.equal(element.attributes.textLength, undefined);
+  assert.equal(element.attributes.lengthAdjust, undefined);
+  // Cả nhãn đã rút gọn cũng giữ tự nhiên khi kết quả đo nhỏ hơn ô.
+  ui.evaluate("nodeElements.get('project:Codex:dự-án').label.textContent = 'Mẫu...';");
+  constrain();
+  assert.equal(element.attributes.textLength, undefined);
+});
+
+test('Đột biến ép mọi hàng và ép chiều rộng lớn hơn chữ tự nhiên đều bị bắt', () => {
+  const before = 'if (natural > maximum) {';
+  assert.ok(source.includes(before));
+  assert.throws(() => naturalRows(source.replace(before, 'if (true) {')), assert.AssertionError);
+  const assignment = "element.setAttribute('textLength', maximum);";
+  assert.ok(source.includes(assignment));
+  assert.throws(() => naturalRows(source.replace(assignment,
+    "element.setAttribute('textLength', natural + 10);")), assert.AssertionError);
+});
 
 test('Phóng, thu, kéo, căn lõi, xem tất cả và đổi khung chỉ sửa thuộc tính; chữ phụ ẩn rồi hiện lại', () => {
   const box = { width: 1159, height: 760 }, ui = board(box);
@@ -453,13 +535,13 @@ test('Đồng hồ nút gốc nằm dưới mọi dòng phụ đề và bộ đ�
   };
   // Khối chữ căn giữa; đồng hồ phải nằm sau cả dòng bộ đếm.
   const one = lineY([]);
-  assert.equal(one.lines, 1); assert.ok(Math.abs(one.elapsedY - one.lastY - 39.28) < 1e-8);
+  assert.equal(one.lines, 1); assert.ok(Math.abs(one.elapsedY - one.lastY - 52.08) < 1e-8);
   const two = lineY(['claude-opus-5-5']);
   assert.equal(two.lines, 2);
-  assert.ok(Math.abs(two.elapsedY - two.lastY - 39.28) < 1e-8, 'Đồng hồ đè lên dòng phụ đề cuối');
+  assert.ok(Math.abs(two.elapsedY - two.lastY - 52.08) < 1e-8, 'Đồng hồ đè lên dòng phụ đề cuối');
   const three = lineY(['claude-opus-5-5', 'claude-haiku-5-5']);
   assert.equal(three.lines, 3);
-  assert.ok(Math.abs(three.elapsedY - three.lastY - 39.28) < 1e-8);
+  assert.ok(Math.abs(three.elapsedY - three.lastY - 52.08) < 1e-8);
   assert.ok(three.elapsedY > two.elapsedY && two.elapsedY > one.elapsedY);
 });
 
@@ -480,7 +562,7 @@ test('DOM xếp mọi dòng đúng hàm thuần, giữ vòng tròn và phần t�
       assert.equal(element.textContent, row.text);
       assert.equal(Number(element.attributes.y), row.y, `Sai tọa độ ${item.node.id}, ${row.kind}`);
       const fontSize = Number(element.attributes.style.split(':')[1].replace('px', ''));
-      assert.ok(Math.abs(Number(element.attributes.textLength) - row.width * fontSize / row.fontSize) < 1e-8);
+      assertTextWidth(element, row, fontSize, item.node.r);
     }
     const subtitleRow = rows.filter(row => row.kind === 'subtitle').at(-1);
     if (subtitleRow) assert.ok(subtitleRow.y < Number(item.counterLabel.attributes.y));

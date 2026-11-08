@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { layoutMindmap, nodeTextRows, compensatedFont, rowVisible, isBrowserFullscreen } from '../public/mindmap-layout.js';
+import { layoutMindmap, nodeTextRows, compensatedFont, fittedTextWidth, textWidth, rowVisible, isBrowserFullscreen } from '../public/mindmap-layout.js';
 import * as modelLabels from '../public/model-labels.js';
 import * as activity from '../public/activity.js';
 import * as counters from '../public/counters.js';
@@ -51,6 +51,7 @@ function createHarness(initialHash = '#so-do', navigator) {
       this.children = [];
       this.append(...children);
     }
+    removeAttribute(key) { delete this.attributes[key]; }
     remove() {
       if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this);
     }
@@ -123,7 +124,7 @@ function createHarness(initialHash = '#so-do', navigator) {
   const location = { hash: initialHash };
   const context = vm.createContext({
     ...modelLabels, ...activity, ...counters, createWakeLock, navigator, document, window, location,
-    Event: class {}, layoutMindmap, nodeTextRows, compensatedFont, rowVisible, Date: Clock,
+    Event: class {}, layoutMindmap, nodeTextRows, compensatedFont, fittedTextWidth, textWidth, rowVisible, Date: Clock,
   });
   vm.runInContext(mindmapSource, context);
   const evaluate = code => vm.runInContext(code, context);

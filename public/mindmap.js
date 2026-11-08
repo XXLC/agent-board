@@ -1,4 +1,4 @@
-import { layoutMindmap, nodeTextRows, compensatedFont, rowVisible } from './mindmap-layout.js';
+import { layoutMindmap, nodeTextRows, compensatedFont, rowVisible, textWidth, fittedTextWidth } from './mindmap-layout.js';
 import { LANE_LABELS, crossProjectActiveText, crossProjectLeafText, crossProjectLinkText, crossProjectNodeText } from './model-labels.js';
 import { isBrowserFullscreen, modelNote, modelText, workProjectDisplay } from './model-labels.js';
 import { activityPhase, activityText } from './activity.js';
@@ -111,7 +111,7 @@ function updateTextScale() {
       element.setAttribute('style', `font-size:${fontSize}px`);
       if (item.node.type === 'run' || item.node.type === 'more') continue;
       element.setAttribute('display', rowVisible(row, fontSize, scale, fitScale) ? 'inline' : 'none');
-      element.setAttribute('textLength', row.width * fontSize / row.fontSize);
+      constrainText(element, row, item.node.r, fontSize);
     }
   }
 }
@@ -261,6 +261,18 @@ function updateCrossLinks(now = Date.now()) {
     if (!presentCrossIds.has(id)) item.group.setAttribute('display', 'none');
   }
 }
+// Đo chữ tự nhiên sau khi bỏ giới hạn cũ; chỉ nén khi vượt ô dự trữ, không kéo giãn.
+function constrainText(element, row, radius, fontSize = row.fontSize) {
+  element.removeAttribute('textLength');
+  element.removeAttribute('lengthAdjust');
+  const measured = element.getComputedTextLength?.();
+  const natural = measured > 0 ? measured : textWidth(row.text, fontSize);
+  const maximum = fittedTextWidth(row, radius, fontSize);
+  if (natural > maximum) {
+    element.setAttribute('textLength', maximum);
+    element.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+  }
+}
 function updateNodeText(item, elapsedText = '') {
   const rows = nodeTextRows(item.node, { elapsedText });
   const subtitles = rows.filter(row => row.kind === 'subtitle');
@@ -280,10 +292,8 @@ function updateNodeText(item, elapsedText = '') {
     element.setAttribute('y', row.y);
     element.setAttribute('style', `font-size:${row.fontSize}px`);
     item.textRows.push({ row, element });
-    // Cố định độ rộng hiển thị theo cùng ước lượng dùng để tính dây cung.
     if (item.node.type !== 'run' && item.node.type !== 'more') {
-      element.setAttribute('textLength', row.textLength ?? row.width);
-      element.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+      constrainText(element, row, item.node.r);
     }
   }
 }
@@ -415,8 +425,7 @@ function tick(now, forceAria = false) {
     if (row) {
       const entry = item.textRows.find(entry => entry.row.kind === 'elapsed');
       if (entry) entry.row = row;
-      item.elapsedLabel.setAttribute('textLength', row.width);
-      item.elapsedLabel.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+      constrainText(item.elapsedLabel, row, item.node.r);
     }
     if (accessible) {
       const desc = description(item.node, now) + (text ? `, ${text}` : '');

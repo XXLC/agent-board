@@ -9,16 +9,19 @@ export const NODE_RADII = {
   project: { min: 74, max: 90 }, lane: { min: 126, max: 132 }, root: { min: 165, max: 190 },
 };
 export const SUBTITLE_MIN_SCREEN_PX = 8;
-export const NODE_FONTS = { root: 22, lane: 18, project: 15, run: 12, more: 15 };
+// Cỡ tiêu đề mong muốn trên màn hình (px), theo thứ bậc: gốc lớn nhất.
+export const TITLE_SCREEN_PX = { root: 17, lane: 14, project: 12 };
+export const NODE_FONTS = { root: 28, lane: 22, project: 19, run: 12, more: 15 };
+const DETAIL_FONTS = { root: 18, lane: 15, project: 14, run: 12 };
 const TITLE_MAX_FONTS = { root: 44, lane: 32, project: 26, more: 15, run: 12 };
 export const textWidth = (text, size) => Array.from(String(text)).length * size * .6;
-const ELAPSED_WIDTH = textWidth('59 phút 59 giây', 13);
+const PROJECT_LABEL_WIDTH = 156;
 const recent = (a, b) => b.start - a.start || String(a.id).localeCompare(String(b.id));
 export function leafRadius(run, now = Date.now()) {
   const seconds = Math.max(0, ((run.end ?? now) - run.start) / 1000);
   return 7 + 11 * Math.min(1, Math.log1p(seconds) / Math.log1p(86_400));
 }
-export function shortenLabel(label, width = 84, size = 15) {
+export function shortenLabel(label, width = PROJECT_LABEL_WIDTH, size = NODE_FONTS.project) {
   const chars = Array.from(String(label || 'Không rõ dự án'));
   const limit = Math.max(3, Math.floor(width / (size * .6)));
   return chars.length <= limit ? chars.join('') : chars.slice(0, limit - 3).join('') + '...';
@@ -31,14 +34,14 @@ export function nodeTextRows(node, { reserve = false, includeLive = true, elapse
   const rows = [];
   const add = (kind, text, reservedWidth = 0, maxWidth = Infinity) => {
     const title = kind === 'label';
-    const fontSize = title ? NODE_FONTS[node.type] : live ? 13 : 12;
+    const fontSize = title ? NODE_FONTS[node.type] : DETAIL_FONTS[node.type];
     const maxFontSize = title ? TITLE_MAX_FONTS[node.type] : fontSize;
     const measured = textWidth(text, fontSize);
     const width = reserve && reservedWidth ? reservedWidth : Math.min(measured, maxWidth);
     rows.push({ kind, text, width, fontSize, maxFontSize, ascent: fontSize, descent: fontSize * .28,
       ...(measured > maxWidth ? { textLength: maxWidth } : {}) });
   };
-  const labelWidth = node.type === 'project' ? 84 : node.type === 'lane' ? 132 : Infinity;
+  const labelWidth = node.type === 'project' ? PROJECT_LABEL_WIDTH : node.type === 'lane' ? 210 : Infinity;
   add('label', node.label || '', 0, labelWidth);
   if (node.type !== 'more') {
     const lines = node.subtitleLines || [node.subtitle || ''];
@@ -53,7 +56,8 @@ export function nodeTextRows(node, { reserve = false, includeLive = true, elapse
     }
     // Giữ một ô đồng hồ trống khi nghỉ để mọi dòng giữ chỗ và bán kính không đổi.
     if (includeLive && live) {
-      add('elapsed', node.running ? elapsedText : '', ELAPSED_WIDTH, ELAPSED_WIDTH);
+      const elapsedWidth = textWidth('59 phút 59 giây', DETAIL_FONTS[node.type]);
+      add('elapsed', node.running ? elapsedText : '', elapsedWidth, elapsedWidth);
     }
   }
   const height = rows.reduce((sum, row) => sum + row.maxFontSize * 1.28, 0) + (rows.length - 1) * 3;
@@ -65,15 +69,19 @@ export function nodeTextRows(node, { reserve = false, includeLive = true, elapse
   });
 }
 
-// Chỉ bù tiêu đề. Giữ nguyên vị trí dòng; chặn cả chiều cao lẫn dây cung có lề 6.
+// Chỉ bù tiêu đề, giữ trần và chiều cao dự trữ. Chiều ngang được nén theo dây cung.
 export function compensatedFont(row, radius, scale, type) {
   if (row.kind !== 'label' || !NODE_RADII[type]) return row.fontSize;
-  const target = type === 'project' ? 10 : 12;
+  const target = TITLE_SCREEN_PX[type];
   const wanted = Math.max(row.fontSize, target / Math.max(scale, .0001));
-  const vertical = Math.max(Math.abs(row.y - row.maxFontSize), Math.abs(row.y + row.maxFontSize * .28));
+  const heightCap = Math.min(radius + row.y - 6, (radius - row.y - 6) / .28);
+  return Math.max(0, Math.min(wanted, row.maxFontSize, heightCap));
+}
+
+export function fittedTextWidth(row, radius, fontSize = row.fontSize) {
+  const vertical = Math.max(Math.abs(row.y - fontSize), Math.abs(row.y + fontSize * .28));
   const chord = 2 * Math.max(0, Math.sqrt(Math.max(0, radius ** 2 - vertical ** 2)) - 6);
-  const widthCap = row.width ? row.fontSize * chord / row.width : row.maxFontSize;
-  return Math.min(wanted, row.maxFontSize, widthCap);
+  return Math.min(row.width * fontSize / row.fontSize, chord);
 }
 
 // Phụ đề hiện khi chữ đủ lớn, HOẶC khi khung nhìn không nhỏ hơn khung "Căn giữa" (fitScale):

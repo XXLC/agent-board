@@ -37,7 +37,7 @@ test('Bán kính gốc và làn chỉ dự trữ một dòng sống, đủ mọi
     const withoutLive = nodeTextRows(node, { reserve: true, includeLive: false });
     assert.equal(reserved.length - withoutLive.length, 1, 'Chỉ dự trữ một dòng sống');
     assert.equal(reserved.at(-1).kind, 'elapsed');
-    const width = Math.max(...durations.map(ms => textWidth(formatDuration(ms), 13)));
+    const width = Math.max(...durations.map(ms => textWidth(formatDuration(ms), type === 'root' ? 18 : 15)));
     assert.equal(reserved.at(-1).width, width, 'Không dự trữ thêm tiền tố hay chữ pha');
     const radius = nodeRadius(reserved, 64);
     const idle = nodeTextRows({ ...node, running: 0, elapsedText: '42 giây' });
@@ -107,15 +107,15 @@ test('Bán kính ổn định từ nghỉ sang giao, làm, đổi đồng hồ v
   }
 });
 
-test('Nút gốc và làn dùng cỡ chữ riêng theo thứ bậc và chung cỡ chữ phụ', () => {
+test('Nút gốc và làn dùng cỡ chữ riêng theo thứ bậc và cỡ chữ phụ theo thứ bậc', () => {
   for (let count = 1; count <= 3; count++) {
     const node = { label: 'Nhãn tổng hợp', subtitleLines: Array(count).fill('Phụ đề tổng hợp'),
       counterText: '1 giờ · 23,0 triệu token', running: 1, phase: 'làm', elapsedText: '11 phút 0 giây' };
     for (const type of ['root', 'lane']) {
       const rows = nodeTextRows({ ...node, type });
       assert.equal(rows[0].fontSize, NODE_FONTS[type]);
-      assert.equal(rows[0].width, Math.min(textWidth(node.label, NODE_FONTS[type]), type === 'lane' ? 132 : Infinity));
-      assert.ok(rows.slice(1).every(row => row.fontSize === 13));
+      assert.equal(rows[0].width, Math.min(textWidth(node.label, NODE_FONTS[type]), type === 'lane' ? 210 : Infinity));
+      assert.ok(rows.slice(1).every(row => row.fontSize === (type === 'root' ? 18 : 15)));
     }
   }
 });
@@ -167,7 +167,7 @@ test('Không rõ dự án rút gọn nhãn, giữ nhãn đầy đủ và vừa v
   const rows = nodeTextRows(project);
   assert.equal(project.fullLabel, 'Không rõ dự án (12)');
   assert.ok(rows[0].text.endsWith('...'));
-  assert.ok(rows[0].width <= 90);
+  assert.ok(rows[0].width <= 156);
   assertInside(rows, project.r);
   const many = layoutMindmap(Array.from({ length: 12 }, (_, i) => run(`dự án ${i}`, { projectKey: `dự án ${i}` })), { now });
   assert.ok(many.nodes.some(node => node.type === 'more' && node.label.includes('dự án')));
