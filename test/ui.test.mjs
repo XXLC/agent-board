@@ -102,7 +102,7 @@ test('Dải thường, chip chỉ sơ đồ và thẻ hiện token, độ phủ,
     assert.match(chips[1].title, /Suy luận.*30 token.*Tổng: 1.500 token.*2\/3 lần có số liệu/);
     assert.match(chips[3].children[1].textContent, /chưa đọc được token/);
     assert.doesNotMatch(chips[3].children[1].textContent, /0 token/);
-    assert.match(chips[3].title, /agy không ghi token ở dạng đọc được.*0\/5 lần có số liệu/);
+    assert.match(chips[3].title, /chưa có lần gọi model nào hoàn tất để tính token.*0\/5 lần có số liệu/);
   }
   assert.match(ui.evaluate("cardElements.get('Codex').counter.textContent"), /Token 24 giờ: 1.500 · chạy 1 phút 0 giây/);
   assert.match(ui.evaluate("cardElements.get('Argon').counter.textContent"), /Token: chưa đọc được · chạy 3 giây/);
@@ -139,7 +139,7 @@ test('Panel chi tiết có sáu thành phần token, thanh có tổng token ở 
   assert.ok(rows.find(item => item.children[0].textContent === 'Thời lượng'));
   ui.evaluate("showDetails({ ...runs[0], lane: 'Opus', tokens: null })");
   assert.match(ui.ids.get('detail-fields').children.find(item => item.children[0].textContent === 'Token').children[1].textContent,
-    /Chưa đọc được token.*agy không ghi token ở dạng đọc được/);
+    /Chưa đọc được token.*chưa có lần gọi model nào hoàn tất để tính token/);
 });
 
 test('Một nhịp sống chỉ đổi chữ, giữ DOM, không dựng chart, không cập nhật aria mỗi giây và đặt lại mốc SSE', () => {

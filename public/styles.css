@@ -879,10 +879,28 @@ footer p {
 }
 
 .map-node .map-subtitle {
-  font-size:10px;
+  font-size:13px;
   fill:var(--muted);
 }
-.map-node .map-run-label { font-size:11px; }
+.map-node .map-run-label {
+  font-size:12px;
+}
+
+.map-root > text {
+  font-size:22px;
+}
+
+.map-lane > text {
+  font-size:18px;
+}
+
+.map-project > text {
+  font-size:15px;
+}
+
+.map-project .map-subtitle {
+  font-size:12px;
+}
 
 .map-node .map-error-mark {
   font-size:14px;

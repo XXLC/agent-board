@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { layoutMindmap, nodeTextRows, isBrowserFullscreen } from '../public/mindmap-layout.js';
+import { layoutMindmap, nodeTextRows, compensatedFont, rowVisible, isBrowserFullscreen } from '../public/mindmap-layout.js';
 import * as modelLabels from '../public/model-labels.js';
 import * as activity from '../public/activity.js';
 import * as counters from '../public/counters.js';
@@ -123,7 +123,7 @@ function createHarness(initialHash = '#so-do', navigator) {
   const location = { hash: initialHash };
   const context = vm.createContext({
     ...modelLabels, ...activity, ...counters, createWakeLock, navigator, document, window, location,
-    Event: class {}, layoutMindmap, nodeTextRows, Date: Clock,
+    Event: class {}, layoutMindmap, nodeTextRows, compensatedFont, rowVisible, Date: Clock,
   });
   vm.runInContext(mindmapSource, context);
   const evaluate = code => vm.runInContext(code, context);
@@ -143,6 +143,31 @@ const sampleRun = {
   id: 'run-1', lane: 'Codex', kind: 'giao việc', projectKey: 'du-an-a', projectLabel: 'DuAn_A',
   start: 1_793_577_540_000, end: null, running: true, prompt: 'Lời nhắc tổng hợp', status: 'unknown',
 };
+
+test('Vào và ra F11 cập nhật cỡ chữ theo vùng vẽ, giữ tham chiếu và tọa độ', () => {
+  const ui = createHarness();
+  ui.window.boardMindmap.update([sampleRun], () => {}, 'cỡ chữ F11');
+  const svg = ui.ids.get('mindmap');
+  let box = { width: 1159, height: 760, left: 0, top: 0 };
+  svg.getBoundingClientRect = () => box;
+  ui.ids.get('map-center').events.click();
+  ui.ids.get('map-zoom-out').events.click();
+  const lane = ui.evaluate("nodeElements.get('lane:Opus')");
+  const transform = lane.group.attributes.transform, y = lane.label.attributes.y;
+  const view = svg.attributes.viewBox;
+  const before = lane.label.attributes.style;
+  ui.evaluate("draw = layoutMindmap = () => { throw new Error('Không được dựng lại sơ đồ'); };");
+  box = { ...box, width: 700, height: 460 };
+  ui.window.boardMindmap.setMapOnly(true);
+  assert.notEqual(lane.label.attributes.style, before);
+  assert.equal(lane.counterLabel.attributes.display, 'none');
+  box = { ...box, width: 1159, height: 760 };
+  ui.window.boardMindmap.setMapOnly(false);
+  assert.equal(lane.label.attributes.style, before);
+  assert.equal(svg.attributes.viewBox, view);
+  assert.equal(ui.evaluate("nodeElements.get('lane:Opus')"), lane);
+  assert.equal(lane.group.attributes.transform, transform); assert.equal(lane.label.attributes.y, y);
+});
 
 test('Chỉ chế độ chỉ sơ đồ mới xin Wake Lock; F11, nút và toàn màn hình trình duyệt cùng nhả khi thoát', async () => {
   let requests = 0, releases = 0;

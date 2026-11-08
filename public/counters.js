@@ -32,7 +32,7 @@ export function coverageText(value, total) {
 }
 
 export function unreadTokenReason(lane) {
-  return ['Opus', 'Argon'].includes(lane) ? 'agy không ghi token ở dạng đọc được' : 'Nguồn chưa cung cấp số liệu token';
+  return ['Opus', 'Argon'].includes(lane) ? 'chưa có lần gọi model nào hoàn tất để tính token' : 'Nguồn chưa cung cấp số liệu token';
 }
 
 export function laneCounters(lane, now, receivedAt = now) {

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { layoutMindmap, nodeTextRows, nodeRadius } from '../public/mindmap-layout.js';
+import { layoutMindmap, nodeTextRows, nodeRadius, textWidth, NODE_FONTS } from '../public/mindmap-layout.js';
 import { formatDuration } from '../public/counters.js';
 
 const now = 1_793_577_600_000;
@@ -37,7 +37,7 @@ test('Bán kính gốc và làn chỉ dự trữ một dòng sống, đủ mọi
     const withoutLive = nodeTextRows(node, { reserve: true, includeLive: false });
     assert.equal(reserved.length - withoutLive.length, 1, 'Chỉ dự trữ một dòng sống');
     assert.equal(reserved.at(-1).kind, 'elapsed');
-    const width = Math.max(...durations.map(ms => formatDuration(ms).length * 6));
+    const width = Math.max(...durations.map(ms => textWidth(formatDuration(ms), 13)));
     assert.equal(reserved.at(-1).width, width, 'Không dự trữ thêm tiền tố hay chữ pha');
     const radius = nodeRadius(reserved, 64);
     const idle = nodeTextRows({ ...node, running: 0, elapsedText: '42 giây' });
@@ -67,10 +67,12 @@ for (const type of ['root', 'lane']) {
         const rows = nodeTextRows(node);
         assertInside(reserved, radius);
         assertInside(rows, radius);
-        assert.equal(rows.length, count + (counterText ? 3 : 2));
-        assert.deepEqual(rows.map(row => row.kind), ['label', ...Array(count).fill('subtitle'), ...(counterText ? ['counter'] : []), 'elapsed']);
-        assert.equal(rows[0].top + rows.at(-1).bottom, 0, 'Khối chữ hiển thị phải căn giữa');
-        for (let i = 1; i < rows.length; i++) assert.equal(rows[i].top - rows[i - 1].bottom, 3);
+        const limit = type === 'root' ? 3 : 1;
+        const shown = count > limit ? limit + 1 : count;
+        assert.equal(rows.length, shown + 3);
+        assert.deepEqual(rows.map(row => row.kind), ['label', ...Array(shown).fill('subtitle'), 'counter', 'elapsed']);
+        assert.ok(Math.abs(rows[0].top + rows.at(-1).bottom) < 1e-8, 'Khối chữ hiển thị phải căn giữa');
+        for (let i = 1; i < rows.length; i++) assert.ok(Math.abs(rows[i].top - rows[i - 1].bottom - 3) < 1e-8);
         if (radius > base) assert.ok(reserved.some(row => {
           const edge = Math.max(Math.abs(row.top), Math.abs(row.bottom));
           return Math.hypot(row.width / 2 + 6, edge) > radius - 1e-6 || edge + 6 > radius - 1e-6;
@@ -96,7 +98,7 @@ test('Bán kính ổn định từ nghỉ sang giao, làm, đổi đồng hồ v
     const positions = value => nodeTextRows(value).map(({ kind, y }) => [kind, y]);
     for (const value of variants) {
       const rows = nodeTextRows(value);
-      assert.equal(rows[0].top + rows.at(-1).bottom, 0);
+      assert.ok(Math.abs(rows[0].top + rows.at(-1).bottom) < 1e-8);
       assertInside(rows, radii[0]);
     }
     assert.deepEqual(positions(variants[0]), positions(variants[1]));
@@ -105,11 +107,16 @@ test('Bán kính ổn định từ nghỉ sang giao, làm, đổi đồng hồ v
   }
 });
 
-test('Nút gốc và làn dùng cùng tọa độ, cỡ hộp và dự trữ cho cùng số dòng', () => {
+test('Nút gốc và làn dùng cỡ chữ riêng theo thứ bậc và chung cỡ chữ phụ', () => {
   for (let count = 1; count <= 3; count++) {
     const node = { label: 'Nhãn tổng hợp', subtitleLines: Array(count).fill('Phụ đề tổng hợp'),
       counterText: '1 giờ · 23,0 triệu token', running: 1, phase: 'làm', elapsedText: '11 phút 0 giây' };
-    assert.deepEqual(nodeTextRows({ ...node, type: 'root' }), nodeTextRows({ ...node, type: 'lane' }));
+    for (const type of ['root', 'lane']) {
+      const rows = nodeTextRows({ ...node, type });
+      assert.equal(rows[0].fontSize, NODE_FONTS[type]);
+      assert.equal(rows[0].width, Math.min(textWidth(node.label, NODE_FONTS[type]), type === 'lane' ? 132 : Infinity));
+      assert.ok(rows.slice(1).every(row => row.fontSize === 13));
+    }
   }
 });
 
@@ -136,7 +143,7 @@ test('Dự án cộng token và hợp khoảng chồng nhau, cắt đúng khoả
   assert.equal(full.tokens.total, 4_100_000);
   assert.equal(full.counterText, '3 giờ · 4,1 triệu token');
   assert.match(full.counterDescription, /thời gian chạy 3 giờ 0 phút, token 4,1 triệu \(2\/3 lần giao có số liệu\)/);
-  assert.deepEqual(nodeTextRows(full).map(row => row.kind), ['label', 'subtitle', 'counter']);
+  assert.deepEqual(nodeTextRows(full).map(row => row.kind), ['label', 'counter']);
   assertInside(nodeTextRows(full), full.r);
   assert.equal(project({ from: now - hour, to: now }).counterText, '1 giờ · 4,1 triệu token');
 });
@@ -145,22 +152,22 @@ test('Dự án agy chỉ có thời gian, ghi rõ thiếu token; không có th�
   for (const lane of ['Opus', 'Argon']) {
     const project = layoutMindmap([run('agy', { lane, tokens: null })], { now }).nodes.find(node => node.type === 'project');
     assert.equal(project.counterText, '2 giờ');
-    assert.match(project.counterDescription, /chưa đọc được token \(0\/1 lần giao có số liệu\), agy không ghi token ở dạng đọc được/);
+    assert.match(project.counterDescription, /chưa đọc được token \(0\/1 lần giao có số liệu\), chưa có lần gọi model nào hoàn tất để tính token/);
     assertInside(nodeTextRows(project), project.r);
   }
   const project = layoutMindmap([run('thiếu thời gian', { start: NaN, end: null })], { now }).nodes.find(node => node.type === 'project');
   assert.equal(project.counterText, '');
-  assert.equal(project.r, 74);
-  assert.deepEqual(nodeTextRows(project).map(row => row.kind), ['label', 'subtitle']);
+  assert.ok(project.r >= 74 && project.r <= 90);
+  assert.deepEqual(nodeTextRows(project).map(row => row.kind), ['label']);
 });
 
-test('Không rõ dự án giữ textLength 126 và vừa vòng tròn; nút gộp và lá không có bộ đếm', () => {
+test('Không rõ dự án rút gọn nhãn, giữ nhãn đầy đủ và vừa vòng tròn; nút gộp và lá không có bộ đếm', () => {
   const layout = layoutMindmap(Array.from({ length: 12 }, (_, i) => run(`không rõ ${i}`, { projectKey: '(không rõ)' })), { now });
   const project = layout.nodes.find(node => node.type === 'project');
   const rows = nodeTextRows(project);
-  assert.equal(rows[0].text, 'Không rõ dự án (12)');
-  assert.equal(rows[0].textLength, 126);
-  assert.equal(rows[0].width, 126);
+  assert.equal(project.fullLabel, 'Không rõ dự án (12)');
+  assert.ok(rows[0].text.endsWith('...'));
+  assert.ok(rows[0].width <= 90);
   assertInside(rows, project.r);
   const many = layoutMindmap(Array.from({ length: 12 }, (_, i) => run(`dự án ${i}`, { projectKey: `dự án ${i}` })), { now });
   assert.ok(many.nodes.some(node => node.type === 'more' && node.label.includes('dự án')));

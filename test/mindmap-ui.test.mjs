@@ -2,14 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { layoutMindmap, nodeTextRows } from '../public/mindmap-layout.js';
+import { layoutMindmap, nodeTextRows, compensatedFont, rowVisible } from '../public/mindmap-layout.js';
 import * as modelLabels from '../public/model-labels.js';
 import * as activity from '../public/activity.js';
 import * as counters from '../public/counters.js';
 import { createWakeLock } from '../public/wake-lock.js';
 
 const source = (await readFile(new URL('../public/mindmap.js', import.meta.url), 'utf8')).replace(/^import .*\r?\n/gm, '');
-function board() {
+function board(box = { width: 390, height: 460 }) {
   let clock = Date.now();
   class Clock extends Date { static now() { return clock; } }
   const ids = new Map(), windowEvents = new Map();
@@ -20,7 +20,7 @@ function board() {
     replaceChildren(...children) { this.children = []; this.append(...children); }
     remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
     addEventListener(key, handler) { this.events[key] = handler; }
-    getBoundingClientRect() { return { x: 0, y: 0, left: 0, top: 0, width: 390, height: 460 }; }
+    getBoundingClientRect() { return { x: 0, y: 0, left: 0, top: 0, ...box }; }
     setPointerCapture() {}
     closest() { return null; }
     focus() { this.focused = true; }
@@ -35,7 +35,7 @@ function board() {
   };
   const location = { hash: '#so-do' };
   const context = vm.createContext({ ...modelLabels, ...activity, ...counters, createWakeLock, document, window, location,
-    Event: class {}, layoutMindmap, nodeTextRows, Date: Clock });
+    Event: class {}, layoutMindmap, nodeTextRows, compensatedFont, rowVisible, Date: Clock });
   vm.runInContext(source, context);
   const evaluate = code => vm.runInContext(code, context);
   return { ids, window, windowEvents, location, evaluate, advance(ms) { clock += ms; } };
@@ -44,6 +44,72 @@ const sample = {
   id: 'tổng-hợp', lane: 'Codex', kind: 'giao việc', projectKey: 'dự-án', projectLabel: 'Dự án',
   start: Date.now() - 60_000, end: null, running: true, prompt: 'Lời nhắc tổng hợp', status: 'unknown',
 };
+
+test('Phóng, thu, kéo, căn lõi, xem tất cả và đổi khung chỉ sửa thuộc tính; chữ phụ ẩn rồi hiện lại', () => {
+  const box = { width: 1159, height: 760 }, ui = board(box);
+  const runs = Array.from({ length: 120 }, (_, i) => ({ ...sample, id: `tổng hợp ${i}`,
+    lane: ['Codex', 'Opus', 'Argon'][i % 3], projectKey: `dự án ${Math.floor(i / 3) % 8}`,
+    projectLabel: 'Dự án tổng hợp', start: ui.evaluate('Date.now()') - 60_000,
+  }));
+  ui.window.boardMindmap.update(runs, () => {}, 'đọc chữ');
+  const items = ui.evaluate('[...nodeElements.values()]');
+  const snapshots = items.map(item => ({ item, transform: item.group.attributes.transform, r: item.circle.attributes.r,
+    children: [...item.group.children], rows: item.textRows.map(({ element }) => [element, element.attributes.y]),
+  }));
+  const lane = items.find(item => item.node.id === 'lane:Codex');
+  const originalStyle = lane.label.attributes.style;
+  const svg = ui.ids.get('mindmap');
+  const core = svg.attributes.viewBox;
+  // Cấm mọi đường dựng chữ và tính bố cục sau khi đã vẽ.
+  ui.evaluate("draw = updateNodeText = layoutMindmap = () => { throw new Error('Không được dựng lại sơ đồ'); };");
+  for (const item of items) for (const { element } of item.textRows) {
+    const text = element.textContent;
+    Object.defineProperty(element, 'textContent', { get: () => text, set() { throw new Error('Chỉ được đổi thuộc tính'); } });
+  }
+  ui.ids.get('map-zoom-out').events.click();
+  assert.notEqual(lane.label.attributes.style, originalStyle);
+  assert.equal(lane.counterLabel.attributes.display, 'none');
+  ui.ids.get('map-zoom-in').events.click();
+  svg.events.wheel({ preventDefault() {}, deltaY: 1, clientX: 200, clientY: 200 });
+  svg.events.pointerdown({ clientX: 100, clientY: 100, pointerId: 1 });
+  svg.events.pointermove({ clientX: 140, clientY: 120 });
+  svg.events.pointerup();
+  ui.ids.get('map-show-all').events.click();
+  assert.equal(svg.attributes.viewBox, ui.evaluate('layout.bounds.join(" ")'));
+  ui.ids.get('map-center').events.click();
+  assert.equal(svg.attributes.viewBox, core);
+  const title = lane.title.textContent, aria = lane.group.attributes['aria-label'];
+  box.width = 3000; box.height = 2000;
+  ui.windowEvents.get('resize')();
+  assert.equal(lane.counterLabel.attributes.display, 'inline');
+  assert.equal(lane.title.textContent, title); assert.equal(lane.group.attributes['aria-label'], aria);
+  assert.equal(svg.attributes.viewBox, core);
+  for (const snapshot of snapshots) {
+    const { item, transform, r, children, rows } = snapshot;
+    assert.equal(ui.evaluate(`nodeElements.get(${JSON.stringify(item.node.id)})`), item);
+    assert.equal(item.group.attributes.transform, transform); assert.equal(item.circle.attributes.r, r);
+    assert.deepEqual(item.group.children, children);
+    for (const [element, y] of rows) assert.equal(element.attributes.y, y);
+    assert.notEqual(item.label.attributes.display, 'none');
+  }
+});
+
+test('Tên dự án và model bị rút gọn vẫn đầy đủ trong tooltip và nhãn trợ năng khi thu nhỏ', () => {
+  const ui = board();
+  const models = Array.from({ length: 20 }, (_, i) => `model-tổng-hợp-${i}`);
+  const label = 'Dự án tổng hợp có tên rất dài '.repeat(20);
+  ui.window.boardMindmap.update([{ ...sample, projectLabel: label }], () => {}, 'đủ thông tin', [], models);
+  ui.ids.get('map-show-all').events.click();
+  const root = ui.evaluate("nodeElements.get('root')");
+  const project = ui.evaluate("nodeElements.get('project:Codex:dự-án')");
+  assert.equal(root.subtitle.children.length, 4);
+  assert.equal(root.subtitle.children[3].textContent, '+17 model');
+  assert.ok(project.label.textContent.endsWith('...'));
+  for (const text of [root.title.textContent, root.group.attributes['aria-label']]) assert.ok(text.includes(models[19]));
+  for (const text of [project.title.textContent, project.group.attributes['aria-label']]) {
+    assert.ok(text.includes(label)); assert.ok(text.includes('1 lần giao'));
+  }
+});
 
 function assertNoPhase(item) {
   assert.equal(item.phaseLabel, undefined, 'Không được dựng phần tử nhãn pha');
@@ -178,7 +244,8 @@ test('Nút chưa rõ dự án đếm số lần, tooltip tổng hợp lý do và
   const runs = [1, 2].map(i => ({ ...sample, id: `tổng-hợp-${i}`, projectKey: '(không rõ)', projectLabel: 'Không rõ dự án',
     unknownReason: 'Codex: không ghi thư mục làm việc', promptSource: 'không có', prompt: 'Lời nhắc truyền qua stdin, không còn trong lệnh' }));
   ui.window.boardMindmap.update(runs, () => {}, 'khung');
-  assert.equal(ui.evaluate("nodeElements.get('project:Codex:(không rõ)').label.textContent"), 'Không rõ dự án (2)');
+  assert.ok(ui.evaluate("nodeElements.get('project:Codex:(không rõ)').label.textContent").endsWith('...'));
+  assert.match(ui.evaluate("nodeElements.get('project:Codex:(không rõ)').title.textContent"), /Không rõ dự án \(2\)/);
   assert.match(ui.evaluate("nodeElements.get('project:Codex:(không rõ)').title.textContent"), /Codex: không ghi thư mục làm việc: 2/);
   const tooltip = ui.evaluate("nodeElements.get('run:tổng-hợp-1').title.textContent");
   assert.match(tooltip, /Lời nhắc truyền qua stdin, không còn trong lệnh/);
@@ -386,13 +453,13 @@ test('Đồng hồ nút gốc nằm dưới mọi dòng phụ đề và bộ đ�
   };
   // Khối chữ căn giữa; đồng hồ phải nằm sau cả dòng bộ đếm.
   const one = lineY([]);
-  assert.equal(one.lines, 1); assert.equal(one.elapsedY - one.lastY, 32);
+  assert.equal(one.lines, 1); assert.ok(Math.abs(one.elapsedY - one.lastY - 39.28) < 1e-8);
   const two = lineY(['claude-opus-5-5']);
   assert.equal(two.lines, 2);
-  assert.equal(two.elapsedY - two.lastY, 32, 'Đồng hồ đè lên dòng phụ đề cuối');
+  assert.ok(Math.abs(two.elapsedY - two.lastY - 39.28) < 1e-8, 'Đồng hồ đè lên dòng phụ đề cuối');
   const three = lineY(['claude-opus-5-5', 'claude-haiku-5-5']);
   assert.equal(three.lines, 3);
-  assert.equal(three.elapsedY - three.lastY, 32);
+  assert.ok(Math.abs(three.elapsedY - three.lastY - 39.28) < 1e-8);
   assert.ok(three.elapsedY > two.elapsedY && two.elapsedY > one.elapsedY);
 });
 
@@ -412,10 +479,11 @@ test('DOM xếp mọi dòng đúng hàm thuần, giữ vòng tròn và phần t�
       const element = row.kind === 'subtitle' ? item.subtitle.children[subtitle++] : elements[row.kind];
       assert.equal(element.textContent, row.text);
       assert.equal(Number(element.attributes.y), row.y, `Sai tọa độ ${item.node.id}, ${row.kind}`);
-      assert.equal(Number(element.attributes.textLength), row.textLength ?? row.width);
+      const fontSize = Number(element.attributes.style.split(':')[1].replace('px', ''));
+      assert.ok(Math.abs(Number(element.attributes.textLength) - row.width * fontSize / row.fontSize) < 1e-8);
     }
-    const subtitleY = rows.filter(row => row.kind === 'subtitle').at(-1).y;
-    assert.ok(subtitleY < Number(item.counterLabel.attributes.y));
+    const subtitleRow = rows.filter(row => row.kind === 'subtitle').at(-1);
+    if (subtitleRow) assert.ok(subtitleRow.y < Number(item.counterLabel.attributes.y));
     if (item.node.type !== 'project' && item.node.running) {
       assert.ok(Number(item.counterLabel.attributes.y) < Number(item.elapsedLabel.attributes.y));
     }
@@ -463,7 +531,7 @@ test('DOM bộ đếm dự án có hợp khoảng, độ phủ, token agy và c�
     const agy = ui.evaluate("nodeElements.get('project:Opus:dự-án')");
     assert.equal(agy.counterLabel.textContent, '1 giờ');
     for (const text of [agy.title.textContent, agy.group.attributes['aria-label']]) {
-      assert.match(text, /chưa đọc được token.*0\/1 lần giao có số liệu.*agy không ghi token ở dạng đọc được/);
+      assert.match(text, /chưa đọc được token.*0\/1 lần giao có số liệu.*chưa có lần gọi model nào hoàn tất để tính token/);
     }
     assert.equal(ui.evaluate("nodeElements.get('project:Codex:thiếu giờ').counterLabel.textContent"), '');
     if (previous) assert.equal(project, previous);

@@ -55,7 +55,7 @@ test('Làn agy chưa đọc được khác với số token thật bằng không
     const data = laneCounters({ lane, tokens24h: { total: 0, runsWithTokens: 0, runsTotal: 12 } }, 1000);
     assert.equal(data.tokens, null);
     assert.equal(data.tokenText, 'chưa đọc được token');
-    assert.equal(data.reason, 'agy không ghi token ở dạng đọc được');
+    assert.equal(data.reason, 'chưa có lần gọi model nào hoàn tất để tính token');
     assert.equal(data.coverage, '0/12 lần có số liệu');
   }
   const zero = laneCounters({ lane: 'Codex', tokens24h: { total: 0, runsWithTokens: 1, runsTotal: 1 } }, 1000);

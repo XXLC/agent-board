@@ -1,4 +1,4 @@
-import { layoutMindmap, nodeTextRows } from './mindmap-layout.js';
+import { layoutMindmap, nodeTextRows, compensatedFont, rowVisible } from './mindmap-layout.js';
 import { LANE_LABELS, crossProjectActiveText, crossProjectLeafText, crossProjectLinkText, crossProjectNodeText } from './model-labels.js';
 import { isBrowserFullscreen, modelNote, modelText, workProjectDisplay } from './model-labels.js';
 import { activityPhase, activityText } from './activity.js';
@@ -89,12 +89,28 @@ function particles(item) {
 
 function setView() {
   if (view) svg.setAttribute('viewBox', view.join(' '));
+  updateTextScale();
 }
-function center() {
+function center(all = false) {
   if (!layout) return;
   userAdjustedView = false;
-  view = [...layout.bounds];
+  view = [...(all ? layout.bounds : layout.coreBounds)];
   setView();
+}
+function updateTextScale() {
+  if (!view) return;
+  const box = svg.getBoundingClientRect();
+  const scale = Math.min(box.width / view[2], box.height / view[3]);
+  if (!(scale > 0)) return;
+  for (const item of nodeElements.values()) {
+    for (const { row, element } of item.textRows || []) {
+      const fontSize = compensatedFont(row, item.node.r, scale, item.node.type);
+      element.setAttribute('style', `font-size:${fontSize}px`);
+      if (item.node.type === 'run' || item.node.type === 'more') continue;
+      element.setAttribute('display', rowVisible(row, fontSize, scale) ? 'inline' : 'none');
+      element.setAttribute('textLength', row.width * fontSize / row.fontSize);
+    }
+  }
 }
 function zoom(factor, anchorX = .5, anchorY = .5) {
   if (!view || !layout) return;
@@ -249,6 +265,7 @@ function updateNodeText(item, elapsedText = '') {
   const elements = { label: item.label, counter: item.counterLabel, elapsed: item.elapsedLabel };
   for (const element of Object.values(elements)) element.textContent = '';
   let index = 0;
+  item.textRows = [];
   for (const row of rows) {
     let element = elements[row.kind];
     if (row.kind === 'subtitle') {
@@ -258,6 +275,8 @@ function updateNodeText(item, elapsedText = '') {
     }
     element.textContent = row.text;
     element.setAttribute('y', row.y);
+    element.setAttribute('style', `font-size:${row.fontSize}px`);
+    item.textRows.push({ row, element });
     // Cố định độ rộng hiển thị theo cùng ước lượng dùng để tính dây cung.
     if (item.node.type !== 'run' && item.node.type !== 'more') {
       element.setAttribute('textLength', row.textLength ?? row.width);
@@ -376,6 +395,7 @@ function draw(reset = false) {
   tick(now, true);
   $('mindmap-empty').hidden = layout.count > 0;
   if (!view || (reset && !userAdjustedView)) center();
+  else updateTextScale();
   if (active) $('run-count').textContent = `${layout.count} lần giao, ${layout.grouped} lần giao đang gộp`;
 }
 // Nhịp chung do app.js gọi; chỉ đổi chữ, không gọi draw, không tính lại bố cục.
@@ -390,10 +410,16 @@ function tick(now, forceAria = false) {
     const row = nodeTextRows(item.node, { elapsedText: text }).find(row => row.kind === 'elapsed');
     item.elapsedLabel.textContent = row?.text || '';
     if (row) {
-      item.elapsedLabel.setAttribute('textLength', row.textLength ?? row.width);
+      const entry = item.textRows.find(entry => entry.row.kind === 'elapsed');
+      if (entry) entry.row = row;
+      item.elapsedLabel.setAttribute('textLength', row.width);
       item.elapsedLabel.setAttribute('lengthAdjust', 'spacingAndGlyphs');
     }
-    if (accessible) item.group.setAttribute('aria-label', description(item.node, now) + (text ? `, ${text}` : ''));
+    if (accessible) {
+      const desc = description(item.node, now) + (text ? `, ${text}` : '');
+      item.group.setAttribute('aria-label', desc);
+      item.title.textContent = desc;
+    }
   }
 }
 function selectTab() {
@@ -630,13 +656,15 @@ document.addEventListener?.('fullscreenchange', () => {
   }
 });
 mediaQuery?.addEventListener?.('change', checkBrowserFullscreen);
-window.addEventListener('resize', checkBrowserFullscreen);
+window.addEventListener('resize', () => { checkBrowserFullscreen(); updateTextScale(); });
+if (typeof ResizeObserver === 'function') new ResizeObserver(updateTextScale).observe(svg);
 $('tab-timeline').addEventListener('click', () => { location.hash = 'dong-thoi-gian'; });
 $('tab-mindmap').addEventListener('click', () => { location.hash = 'so-do'; });
 window.addEventListener('hashchange', selectTab);
 $('map-zoom-in').addEventListener('click', () => zoom(.75));
 $('map-zoom-out').addEventListener('click', () => zoom(1 / .75));
-$('map-center').addEventListener('click', center);
+$('map-center').addEventListener('click', () => center());
+$('map-show-all')?.addEventListener('click', () => center(true));
 $('map-reorder').addEventListener('click', () => draw(true));
 $('map-fullscreen')?.addEventListener('click', toggleFullscreen);
 $('map-legend-toggle')?.addEventListener('click', () => {
