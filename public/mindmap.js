@@ -1,8 +1,8 @@
-import { layoutMindmap } from './mindmap-layout.js';
+import { layoutMindmap, nodeTextRows } from './mindmap-layout.js';
 import { LANE_LABELS, crossProjectActiveText, crossProjectLeafText, crossProjectLinkText, crossProjectNodeText } from './model-labels.js';
 import { isBrowserFullscreen, modelNote, modelText, workProjectDisplay } from './model-labels.js';
 import { activityPhase, activityText } from './activity.js';
-import { formatDuration, formatTokens, tokenBreakdown, rangeCounters } from './counters.js';
+import { formatDuration, formatTokens, tokenBreakdown } from './counters.js';
 import { createWakeLock } from './wake-lock.js';
 
 const $ = id => document.getElementById(id);
@@ -144,7 +144,7 @@ function description(node, now = Date.now()) {
   if (node.type === 'more') return `${node.label}, bấm để mở rộng`;
   const action = node.type === 'root' ? 'điều phối' : collapsed.has(node.id) ? 'bấm để mở rộng' : 'bấm để thu gọn';
   return `${node.fullLabel || node.label}, ${node.subtitle || ''}`
-    + (node.counterText ? `, ${node.counterText}` : '')
+    + (node.counterDescription ? `, ${node.counterDescription}` : '')
     + (node.crossCount ? `, ${crossProjectNodeText(node.crossCount)}` : '')
     + (node.unknownReasons ? `, ${node.unknownReasons}` : '')
     + `${node.running ? `, đang ${node.phase}` : ''}, ${action}`;
@@ -242,9 +242,32 @@ function updateCrossLinks(now = Date.now()) {
     if (!presentCrossIds.has(id)) item.group.setAttribute('display', 'none');
   }
 }
+function updateNodeText(item, elapsedText = '') {
+  const rows = nodeTextRows(item.node, { elapsedText });
+  const subtitles = rows.filter(row => row.kind === 'subtitle');
+  while (item.subtitle.children.length > subtitles.length) item.subtitle.children[item.subtitle.children.length - 1].remove();
+  const elements = { label: item.label, counter: item.counterLabel, phase: item.phaseLabel, elapsed: item.elapsedLabel };
+  for (const element of Object.values(elements)) element.textContent = '';
+  let index = 0;
+  for (const row of rows) {
+    let element = elements[row.kind];
+    if (row.kind === 'subtitle') {
+      if (!item.subtitle.children[index]) item.subtitle.append(shape('tspan', { x: 0, dy: 0 }));
+      element = item.subtitle.children[index++];
+      if (index === 1) item.subtitle.setAttribute('y', row.y);
+    }
+    element.textContent = row.text;
+    element.setAttribute('y', row.y);
+    // Cố định độ rộng hiển thị theo cùng ước lượng dùng để tính dây cung.
+    if (item.node.type !== 'run' && item.node.type !== 'more') {
+      element.setAttribute('textLength', row.textLength ?? row.width);
+      element.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+    }
+  }
+}
 function draw(reset = false) {
   const now = Date.now();
-  layout = layoutMindmap(currentRuns, { previous: reset ? undefined : layout, expanded, collapsed, now, claudeModels });
+  layout = layoutMindmap(currentRuns, { previous: reset ? undefined : layout, expanded, collapsed, now, claudeModels, range: counterRange });
   const present = new Set(layout.nodes.map(node => node.id));
   for (const [id, item] of nodeElements) if (!present.has(id)) { item.group.remove(); nodeElements.delete(id); }
   const byId = new Map(layout.nodes.map(node => [node.id, node]));
@@ -291,8 +314,8 @@ function draw(reset = false) {
     if (!item) {
       const group = shape('g', { tabindex: 0, role: 'button' });
       const circle = shape('circle'), title = shape('title');
-      const label = shape('text', { 'text-anchor': 'middle', y: 4 });
-      const subtitle = shape('text', { 'text-anchor': 'middle', y: 23, class: 'map-subtitle' });
+      const label = shape('text', { 'text-anchor': 'middle' });
+      const subtitle = shape('text', { 'text-anchor': 'middle', class: 'map-subtitle' });
       const mark = shape('text', { 'text-anchor': 'middle', y: 5, class: 'map-error-mark' });
       const crossMark = shape('path', { class: 'map-cross-mark', 'aria-hidden': 'true' });
       const phaseLabel = shape('text', { 'text-anchor': 'middle', class: 'map-subtitle map-phase' });
@@ -302,7 +325,7 @@ function draw(reset = false) {
       badge.append(shape('rect', { x: -58, y: -12, width: 116, height: 24, rx: 12 }),
         shape('circle', { cx: -46, r: 3, class: 'map-badge-dot' }),
         shape('text', { 'text-anchor': 'middle', x: 5, y: 4 }));
-      group.append(title, circle, crossMark, label, subtitle, phaseLabel, counterLabel, elapsedLabel, mark, badge);
+      group.append(title, circle, crossMark, label, subtitle, counterLabel, phaseLabel, elapsedLabel, mark, badge);
       item = { group, circle, crossMark, title, label, subtitle, phaseLabel, counterLabel, elapsedLabel, mark, badge, node };
       group.addEventListener('click', () => activate(item.node));
       group.addEventListener('keydown', event => {
@@ -315,16 +338,6 @@ function draw(reset = false) {
     item.node = node;
     const own = node.type === 'root' || node.type === 'lane'
       ? currentRuns.filter(run => run.lane === (node.type === 'root' ? 'Claude' : node.lane)) : node.runs || [];
-    if (node.type === 'root' || node.type === 'lane') {
-      const counters = rangeCounters(own, now, counterRange);
-      const brief = counters.busyMs >= 3600_000 ? `${Math.floor(counters.busyMs / 3600_000)} giờ`
-        : counters.busyMs >= 60_000 ? `${Math.floor(counters.busyMs / 60_000)} phút` : formatDuration(counters.busyMs);
-      node.counterText = `${brief}` + (counters.tokens ? ` · ${formatTokens(counters.tokens.total)} token` : '');
-      if (node.counterText.length > 31 && counters.tokens) node.counterText = `${formatTokens(counters.tokens.total)} token`;
-      // Chữ vừa vùng đã dự trữ; không đổi bán kính, bố cục hay vị trí nút vì token tăng.
-      item.counterLabel.textContent = node.counterText;
-      item.counterLabel.setAttribute('y', node.type === 'root' ? -24 : 37);
-    }
     item.runningStart = ['root', 'lane'].includes(node.type)
       ? Math.min(...own.filter(run => run.running).map(run => run.start)) : Infinity;
     const status = node.run?.running ? 'running' : node.run?.status || '';
@@ -346,7 +359,6 @@ function draw(reset = false) {
     item.badge.setAttribute('transform', `translate(0 ${-node.r - 18})`);
     item.badge.setAttribute('display', node.type === 'lane' && working ? 'inline' : 'none');
     item.badge.children[2].textContent = `${node.running} đang chạy`;
-    item.phaseLabel.textContent = working && ['root', 'lane', 'run'].includes(node.type) ? `đang ${node.phase}` : '';
     item.group.setAttribute('transform', `translate(${node.x} ${node.y})`);
     item.group.setAttribute('aria-label', description(node, now));
     if (node.type === 'project' || node.type === 'lane') item.group.setAttribute('aria-expanded', !collapsed.has(node.id));
@@ -356,23 +368,9 @@ function draw(reset = false) {
     const fill = node.type === 'run' && status !== 'unknown' && status !== 'error' ? laneColor(node.lane) : 'var(--surface)';
     item.circle.setAttribute('fill', status === 'quota' ? `url(#quota-${node.lane})` : fill);
     item.title.textContent = description(node, now);
-    item.label.textContent = node.label || '';
-    item.label.setAttribute('y', node.type === 'run' ? node.r + 14 : 4);
     if (node.type === 'run') item.label.setAttribute('class', 'map-run-label');
-    if (node.type === 'project' && node.unknownReasons) {
-      item.label.setAttribute('textLength', '126'); item.label.setAttribute('lengthAdjust', 'spacingAndGlyphs');
-    }
-    const subtitleLines = node.subtitleLines || [node.subtitle || ''];
-    while (item.subtitle.children.length > subtitleLines.length) item.subtitle.children[item.subtitle.children.length - 1].remove();
-    subtitleLines.forEach((line, i) => {
-      if (!item.subtitle.children[i]) item.subtitle.append(shape('tspan', { x: 0, dy: i ? 14 : 0 }));
-      item.subtitle.children[i].textContent = line;
-    });
-    item.subtitle.setAttribute('y', node.type === 'run' ? node.r + 28 : 23);
-    // Nhãn pha nằm ngay dưới dòng phụ đề cuối: nút một dòng giữ y = 40, nút gốc nhiều dòng (model Claude) được đẩy xuống để không đè chữ.
-    const phaseY = node.type === 'run' ? node.r + 42 : node.type === 'lane' ? 54 : 23 + 14 * (subtitleLines.length - 1) + 17;
-    item.phaseLabel.setAttribute('y', phaseY);
-    item.elapsedLabel.setAttribute('y', phaseY + 14);
+    const elapsedText = Number.isFinite(item.runningStart) ? `Đang làm: ${formatDuration(Math.max(0, now - item.runningStart))}` : '';
+    updateNodeText(item, elapsedText);
     item.mark.textContent = status === 'error' ? 'X' : '';
   }
   updateCrossLinks(now);
@@ -389,7 +387,13 @@ function tick(now, forceAria = false) {
   for (const item of nodeElements.values()) {
     const elapsed = Math.max(0, now - item.runningStart);
     const text = Number.isFinite(item.runningStart) ? `Đang làm: ${formatDuration(elapsed)}` : '';
-    item.elapsedLabel.textContent = text;
+    // Chỉ thay chữ đồng hồ trong ô đã dự trữ; không dựng lại nút hay đổi tọa độ dòng.
+    const row = nodeTextRows(item.node, { elapsedText: text }).find(row => row.kind === 'elapsed');
+    item.elapsedLabel.textContent = row?.text || '';
+    if (row) {
+      item.elapsedLabel.setAttribute('textLength', row.textLength ?? row.width);
+      item.elapsedLabel.setAttribute('lengthAdjust', 'spacingAndGlyphs');
+    }
     if (accessible) item.group.setAttribute('aria-label', description(item.node, now) + (text ? `, ${text}` : ''));
   }
 }

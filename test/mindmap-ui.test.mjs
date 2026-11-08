@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
-import { layoutMindmap } from '../public/mindmap-layout.js';
+import { layoutMindmap, nodeTextRows } from '../public/mindmap-layout.js';
 import * as modelLabels from '../public/model-labels.js';
 import * as activity from '../public/activity.js';
 import * as counters from '../public/counters.js';
@@ -34,7 +34,8 @@ function board() {
     addEventListener: (event, handler) => windowEvents.set(event, handler), dispatchEvent() {},
   };
   const location = { hash: '#so-do' };
-  const context = vm.createContext({ ...modelLabels, ...activity, ...counters, createWakeLock, document, window, location, Event: class {}, layoutMindmap, Date: Clock });
+  const context = vm.createContext({ ...modelLabels, ...activity, ...counters, createWakeLock, document, window, location,
+    Event: class {}, layoutMindmap, nodeTextRows, Date: Clock });
   vm.runInContext(source, context);
   const evaluate = code => vm.runInContext(code, context);
   return { ids, window, windowEvents, location, evaluate, advance(ms) { clock += ms; } };
@@ -332,17 +333,92 @@ test('Nhãn "đang làm" của nút gốc nằm dưới mọi dòng phụ đề,
     ui.window.boardMindmap.update([], () => {}, `nhãn-${models.length}`, [running], models);
     const root = ui.evaluate("nodeElements.get('root')");
     const lines = root.subtitle.children.length;
-    return { lines, subtitleY: Number(root.subtitle.attributes.y), phaseY: Number(root.phaseLabel.attributes.y) };
+    return { lines, lastY: Number(root.subtitle.children.at(-1).attributes.y), phaseY: Number(root.phaseLabel.attributes.y) };
   };
-  // Một dòng model: giữ vị trí cũ (y = 40), vẫn dưới dòng phụ đề (y = 23, cao chữ khoảng 14).
+  // Khối chữ căn giữa; pha phải nằm sau cả dòng bộ đếm mới.
   const one = lineY([]);
-  assert.equal(one.lines, 1); assert.equal(one.phaseY, 40);
-  // Hai và ba dòng model: mỗi dòng thêm 14 đơn vị nên nhãn pha phải lùi xuống tương ứng, luôn cách dòng cuối ít nhất 17.
+  assert.equal(one.lines, 1); assert.ok(one.phaseY - one.lastY >= 32);
   const two = lineY(['claude-opus-5-5']);
   assert.equal(two.lines, 2);
-  assert.ok(two.phaseY - (two.subtitleY + 14 * (two.lines - 1)) >= 17, 'nhãn pha đè lên dòng phụ đề cuối');
+  assert.ok(two.phaseY - two.lastY >= 32, 'nhãn pha đè lên dòng phụ đề cuối');
   const three = lineY(['claude-opus-5-5', 'claude-haiku-5-5']);
   assert.equal(three.lines, 3);
-  assert.ok(three.phaseY - (three.subtitleY + 14 * (three.lines - 1)) >= 17);
+  assert.ok(three.phaseY - three.lastY >= 32);
   assert.ok(three.phaseY > two.phaseY && two.phaseY > one.phaseY);
+});
+
+test('DOM xếp mọi dòng đúng hàm thuần, giữ vòng tròn và phần tử qua SSE, nghỉ và đồng hồ 9 sang 10 phút', () => {
+  const ui = board(), now = ui.evaluate('Date.now()');
+  const run = { ...sample, start: now - 9 * 60_000, tokens: { total: 22_600_000 } };
+  const claude = { ...run, lane: 'Claude', id: 'gốc', model: 'claude-sonnet-5-5' };
+  const update = (value, root) => ui.window.boardMindmap.update([value], () => {}, 'xếp-chữ', [root], ['claude-opus-5-5']);
+  update(run, claude);
+  const root = ui.evaluate("nodeElements.get('root')"), lane = ui.evaluate("nodeElements.get('lane:Codex')");
+  const project = ui.evaluate("nodeElements.get('project:Codex:dự-án')");
+  const compareRows = item => {
+    const rows = nodeTextRows(item.node, { elapsedText: item.elapsedLabel.textContent });
+    const elements = { label: item.label, counter: item.counterLabel, phase: item.phaseLabel, elapsed: item.elapsedLabel };
+    let subtitle = 0;
+    for (const row of rows) {
+      const element = row.kind === 'subtitle' ? item.subtitle.children[subtitle++] : elements[row.kind];
+      assert.equal(element.textContent, row.text);
+      assert.equal(Number(element.attributes.y), row.y, `Sai tọa độ ${item.node.id}, ${row.kind}`);
+      assert.equal(Number(element.attributes.textLength), row.textLength ?? row.width);
+    }
+    const subtitleY = rows.filter(row => row.kind === 'subtitle').at(-1).y;
+    assert.ok(subtitleY < Number(item.counterLabel.attributes.y));
+    if (item.node.type !== 'project' && item.node.running) {
+      assert.ok(Number(item.counterLabel.attributes.y) < Number(item.phaseLabel.attributes.y));
+      assert.ok(Number(item.phaseLabel.attributes.y) < Number(item.elapsedLabel.attributes.y));
+    }
+  };
+  for (const item of [root, lane, project]) compareRows(item);
+  const before = [root, lane, project].map(item => ({
+    item, radius: item.circle.attributes.r, position: item.group.attributes.transform, children: [...item.group.children],
+    subtitles: [...item.subtitle.children],
+  }));
+  ui.ids.get('map-zoom-in').events.click();
+  const view = ui.ids.get('mindmap').attributes.viewBox;
+  ui.advance(60_000); ui.window.boardMindmap.tick(ui.evaluate('Date.now()'));
+  assert.equal(lane.elapsedLabel.textContent, 'Đang làm: 10 phút 0 giây');
+  update({ ...run, tokens: { total: 179_600_000 } }, claude);
+  update({ ...run, running: false, end: now }, { ...claude, running: false, end: now });
+  for (const { item, radius, position, children, subtitles } of before) {
+    assert.equal(ui.evaluate(`nodeElements.get('${item.node.id}')`), item);
+    assert.equal(item.circle.attributes.r, radius);
+    assert.equal(item.group.attributes.transform, position);
+    assert.deepEqual(item.group.children, children);
+    assert.deepEqual(item.subtitle.children, subtitles);
+    compareRows(item);
+  }
+  assert.equal(ui.ids.get('mindmap').attributes.viewBox, view);
+  assert.equal(lane.phaseLabel.textContent, ''); assert.equal(lane.elapsedLabel.textContent, '');
+});
+
+test('DOM bộ đếm dự án có hợp khoảng, độ phủ, token agy và cập nhật bốn khoảng thời gian', () => {
+  const ui = board(), now = ui.evaluate('Date.now()'), hour = 3600_000;
+  const runs = [
+    { ...sample, id: 'dài', start: now - 20 * 24 * hour, end: now - hour, running: false, tokens: { total: 2_000_000 } },
+    { ...sample, id: 'ngắn', start: now - 2 * hour, end: now, running: false, tokens: { total: 2_100_000 } },
+    { ...sample, id: 'không token', start: now - hour, end: now, running: false, tokens: null },
+    { ...sample, id: 'agy', lane: 'Opus', start: now - hour, end: now, running: false, tokens: null },
+    { ...sample, id: 'thiếu giờ', projectKey: 'thiếu giờ', start: NaN, end: null, running: false },
+  ];
+  let previous;
+  for (const hours of [6, 24, 7 * 24, 30 * 24]) {
+    ui.window.boardMindmap.update(runs, () => {}, 'dự án', [], [], { from: now - hours * hour, to: now });
+    const project = ui.evaluate("nodeElements.get('project:Codex:dự-án')");
+    assert.equal(project.counterLabel.textContent, `${Math.min(hours, 20 * 24)} giờ · 4,1 triệu token`);
+    for (const text of [project.title.textContent, project.group.attributes['aria-label']]) {
+      assert.match(text, /thời gian chạy .*token 4,1 triệu \(2\/3 lần giao có số liệu\)/);
+    }
+    const agy = ui.evaluate("nodeElements.get('project:Opus:dự-án')");
+    assert.equal(agy.counterLabel.textContent, '1 giờ');
+    for (const text of [agy.title.textContent, agy.group.attributes['aria-label']]) {
+      assert.match(text, /chưa đọc được token.*0\/1 lần giao có số liệu.*agy không ghi token ở dạng đọc được/);
+    }
+    assert.equal(ui.evaluate("nodeElements.get('project:Codex:thiếu giờ').counterLabel.textContent"), '');
+    if (previous) assert.equal(project, previous);
+    previous = project;
+  }
 });

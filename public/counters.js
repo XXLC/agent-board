@@ -67,3 +67,18 @@ export function rangeCounters(runs, now = Date.now(), { from = -Infinity, to = I
   }
   return { tokens: runsWithTokens ? tokens : null, busyMs, runsWithTokens, runsTotal: runs.length };
 }
+
+// Cùng cách tính và định dạng cho bóng gốc, làn và dự án trong khoảng đang chọn.
+export function nodeCounters(runs, lane, now, range) {
+  const counters = rangeCounters(runs, now, range);
+  const { busyMs, tokens, runsWithTokens, runsTotal } = counters;
+  const brief = busyMs >= 3600_000 ? `${Math.floor(busyMs / 3600_000)} giờ`
+    : busyMs >= 60_000 ? `${Math.floor(busyMs / 60_000)} phút` : formatDuration(busyMs);
+  const tokenText = tokens ? `${formatTokens(tokens.total)} token` : 'chưa đọc được token';
+  return {
+    ...counters,
+    counterText: brief + (tokens ? ` · ${tokenText}` : ''),
+    counterDescription: `thời gian chạy ${formatDuration(busyMs)}, ${tokens ? `token ${formatTokens(tokens.total)}` : tokenText}`
+      + ` (${runsWithTokens}/${runsTotal} lần giao có số liệu)` + (tokens ? '' : `, ${unreadTokenReason(lane)}`),
+  };
+}

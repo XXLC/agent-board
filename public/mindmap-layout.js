@@ -1,5 +1,6 @@
 import { LANE_LABELS, countModels, isBrowserFullscreen, modelLabel } from './model-labels.js';
 import { activityPhase } from './activity.js';
+import { nodeCounters } from './counters.js';
 
 export { isBrowserFullscreen };
 export const MINDMAP_LANES = ['Codex', 'Opus', 'Argon'];
@@ -15,17 +16,53 @@ export function shortenLabel(label, width = 126) {
   return chars.length <= limit ? chars.join('') : chars.slice(0, limit - 3).join('') + '...';
 }
 
-// Dự trữ cả nhãn và phụ đề, không chỉ đường tròn của nút.
+// Hộp chữ bảo thủ: tiêu đề 14px, phụ đề 10px; cùng kiểu chữ trong styles.css.
+// Dự trữ 31 ký tự cho số liệu/phụ đề và cả hai dạng đồng hồ dài nhất dưới 100 giờ.
+// Chữ dài hơn vùng dự trữ được co bằng textLength, không làm nhảy bán kính qua SSE.
+export function nodeTextRows(node, { reserve = false, includeLive = true, elapsedText = node.elapsedText || '' } = {}) {
+  const live = node.type === 'root' || node.type === 'lane';
+  const rows = [];
+  const add = (kind, text, reservedWidth = 0, maxWidth = Infinity) => {
+    const title = kind === 'label';
+    const measured = Array.from(text).length * (title ? node.type === 'run' ? 7 : 8 : 6);
+    const width = reserve && reservedWidth ? reservedWidth : Math.min(measured, maxWidth);
+    rows.push({ kind, text, width, ascent: title ? 14 : 10, descent: title ? 4 : 3,
+      ...(measured > maxWidth ? { textLength: maxWidth } : {}) });
+  };
+  const unknown = node.type === 'project' && node.projectKey === '(không rõ)';
+  add('label', node.label || '', 0, unknown ? 126 : Infinity);
+  if (node.type !== 'more') {
+    for (const line of node.subtitleLines || [node.subtitle || '']) {
+      if (line || node.type === 'run') add('subtitle', line, live ? 186 : 0, live ? 186 : Infinity);
+    }
+    if (node.counterText || (live && reserve)) add('counter', node.counterText || '', 186, 186);
+    if (includeLive && (live || node.type === 'run')) {
+      if (node.running || (live && reserve)) add('phase', node.running ? `đang ${node.phase}` : '', 54, 54);
+      if (live && (elapsedText || reserve)) add('elapsed', elapsedText, 144, 144);
+    }
+  }
+  const height = rows.reduce((sum, row) => sum + row.ascent + row.descent, 0) + (rows.length - 1) * 3;
+  let top = -height / 2;
+  return rows.map((row, index) => {
+    const y = node.type === 'run' ? node.r + 14 + index * 14 : top + row.ascent;
+    top += row.ascent + row.descent + 3;
+    return { ...row, y, top: y - row.ascent, bottom: y + row.descent };
+  });
+}
+
+// Bán kính nhỏ nhất thỏa đồng thời dây cung ngang và lề dọc của mọi hộp chữ.
+export function nodeRadius(rows, base) {
+  return Math.max(base, ...rows.map(row => {
+    const edge = Math.max(Math.abs(row.top), Math.abs(row.bottom));
+    return Math.max(edge + 6, Math.hypot(row.width / 2 + 6, edge));
+  }));
+}
+
+// Lá có chữ bên ngoài; các bóng còn lại đã chứa trọn khối chữ trong node.r.
 export function labelRadius(node) {
-  const lines = node.subtitleLines || [node.subtitle || ''];
-  const labelWidth = Array.from(node.label || '').length * (node.type === 'run' ? 7 : 8);
-  const hasCounters = node.type === 'root' || node.type === 'lane';
-  // Dự trữ tối đa 31 ký tự cho dòng đếm và một dòng thời lượng; số liệu tăng không dời nút qua SSE.
-  const subtitleWidth = Math.max(hasCounters ? 186 : 0, ...lines.map(line => Array.from(line).length * 6));
-  const bottom = node.type === 'run' ? 18 + 42 : node.type === 'lane' ? 68
-    : 23 + Math.max(0, lines.length - 1) * 14 + (hasCounters ? 31 : 0);
-  return Math.max(node.type === 'lane' ? node.r * 1.6 + 6 : node.type === 'run' ? 18 : node.r,
-    Math.hypot(Math.max(labelWidth, subtitleWidth) / 2 + 4, bottom + 8));
+  if (node.type !== 'run') return node.type === 'lane' ? node.r * 1.6 + 6 : node.r;
+  const width = Math.max(Array.from(node.label || '').length * 7, Array.from(node.subtitle || '').length * 6);
+  return Math.max(18, Math.hypot(width / 2 + 4, 18 + 42 + 8));
 }
 
 // Vị trí cũ là đầu vào tường minh để hàm thuần giữ chỗ qua các lượt cập nhật.
@@ -49,6 +86,16 @@ export function layoutMindmap(runs, options = {}) {
   // Dự trữ bán kính tối đa của lá để thời lượng tăng không gây va chạm.
   const occupied = [...old.values()].map(node => ({ ...node, reserve: node.reserve || node.r }));
   const place = (node, arc, base, preferred) => {
+    if (['root', 'lane', 'project'].includes(node.type)) {
+      const counters = nodeCounters(node.runs || [], node.lane || 'Claude', now, options.range);
+      Object.assign(node, counters);
+      if (node.type === 'project' && !counters.busyMs) node.counterText = '';
+      const rows = nodeTextRows(node, { reserve: true });
+      // Khi nghỉ, bộ đếm xuống cuối khối chữ và cần dây cung rộng hơn tại vị trí đó.
+      // Dự trữ cả hai khối căn giữa để ẩn/hiện dòng sống không đổi bán kính.
+      if (node.type !== 'project') rows.push(...nodeTextRows(node, { reserve: true, includeLive: false }));
+      node.r = nodeRadius(rows, node.r);
+    }
     node.reserve = labelRadius(node);
     const saved = old.get(node.id);
     const oldIndex = occupied.findIndex(other => other.id === node.id);
@@ -84,7 +131,7 @@ export function layoutMindmap(runs, options = {}) {
   const modelLines = counted.map(({ name, count }) => `${name} x ${count}`);
   const subtitleLines = modelLines.length ? modelLines : [`${sessions} phiên hoạt động`];
   place({ id: 'root', type: 'root', label: LANE_LABELS.Claude,
-    subtitle: subtitleLines.join(' · '), subtitleLines, r: Math.max(70, 42 + subtitleLines.length * 14) }, null);
+    subtitle: subtitleLines.join(' · '), subtitleLines, runs: claudeRuns, r: 70 }, null);
   let grouped = 0;
   for (const arc of arcs) {
     const own = work.filter(run => run.lane === arc.lane).sort(recent);
