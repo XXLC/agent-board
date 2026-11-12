@@ -105,7 +105,17 @@ async function findRunning() {
   await probe(); // tạo một kết nối để netstat thấy chủ phía máy chủ
   const owners = await portOwners();
   const matched = candidates.filter(pid => owners.has(pid));
-  return matched.length === 1 ? matched[0] : 0;
+  if (matched.length === 1) return matched[0];
+  // Không đọc được dòng lệnh (ví dụ tiến trình chạy với quyền cao hơn): nhận diện bằng phản hồi API của chính cổng,
+  // chỉ khi đúng một tiến trình giữ cổng và API trả đúng dạng của Agent Board.
+  const state = await probe();
+  if (owners.size === 1 && Array.isArray(state?.lanes) && state?.scan && typeof state.revision === 'number') return [...owners][0];
+  return 0;
+}
+
+// Tiến trình còn sống không, không cần đọc dòng lệnh.
+async function isAlive(pid) {
+  return Boolean(await powershell(`(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).Id`));
 }
 
 async function start() {
@@ -132,14 +142,24 @@ async function start() {
 async function stop() {
   const pid = await findRunning();
   if (!pid) {
+    if (await portInUse()) {
+      console.error(`Cổng ${port} đang bị một tiến trình không phải Agent Board giữ; không dừng gì và giữ nguyên tệp PID.`);
+      return 1;
+    }
     rmSync(pidFile, { force: true });
     console.log('Agent Board không chạy.');
     return 0;
   }
-  try { process.kill(pid); } catch (error) { console.error(`Không dừng được PID ${pid}: ${error.message}`); return 1; }
+  try { process.kill(pid); } catch (error) {
+    const elevated = error.code === 'EPERM' || error.code === 'EACCES';
+    console.error(`Không dừng được PID ${pid}: ${error.message}` + (elevated
+      ? `\nTiến trình này chạy với quyền cao hơn shell hiện tại. Mở PowerShell bằng Run as administrator và chạy: Stop-Process -Id ${pid} -Force`
+      : ''));
+    return 1;
+  }
   for (let i = 0; i < 20; i++) {
     await sleep(250);
-    if (!await commandLineOf(pid)) { rmSync(pidFile, { force: true }); console.log(`Đã dừng Agent Board (PID ${pid}).`); return 0; }
+    if (!await isAlive(pid)) { rmSync(pidFile, { force: true }); console.log(`Đã dừng Agent Board (PID ${pid}).`); return 0; }
   }
   console.error(`PID ${pid} vẫn còn sau 5 giây.`);
   return 1;

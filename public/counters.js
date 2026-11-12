@@ -21,6 +21,7 @@ export function formatTokens(n) {
 
 export function tokenBreakdown(tokens) {
   if (!tokens) return 'Chưa đọc được token';
+  if (tokens.totalOnly) return `Tổng: ${integer.format(amount(tokens.total))} token (số liệu gộp của phiên, chưa tách vào/ra)`;
   const labels = ['Vào', 'Cache đọc', 'Cache ghi', 'Ra', 'Suy luận (nằm trong ra)', 'Tổng'];
   return fields.map((key, i) => `${labels[i]}: ${integer.format(amount(tokens[key]))} token`).join(' · ');
 }
@@ -33,7 +34,7 @@ export function coverageText(value, total) {
 
 export function unreadTokenReason(lane) {
   if (['Opus', 'Argon'].includes(lane)) return 'chưa có lần gọi model nào hoàn tất để tính token';
-  if (lane === 'DeepSeek') return 'tệp phiên Codewhale chỉ ghi tổng token gộp, chưa tách thành phần vào/ra';
+  if (lane === 'DeepSeek') return 'chưa có tệp phiên Codewhale nào để lấy token (lần chạy exec không có --auto không được lưu phiên)';
   return 'Nguồn chưa cung cấp số liệu token';
 }
 

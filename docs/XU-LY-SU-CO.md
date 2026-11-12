@@ -25,7 +25,7 @@
 - **Lời nhắc Codex là `2` hoặc `*`**: toán tử chuyển hướng bị lấy làm lời nhắc. Bộ phân tích phải bỏ qua `2>&1`, `*>`, `>`, `|`.
 - **Mọi dự án hiện là slug thô (`d--...`)**: gốc project không suy ra được vì cwd lang thang; phải chọn cwd có slug khớp đúng tên thư mục.
 - **Làn Gemini Argon có model Flash, làn Antigravity Opus có Sonnet**: không phải lỗi; làn là vai trò, model ghi theo từng lần chạy.
-- **Làn DeepSeek có thời lượng 0, token "chưa đọc được" và dự án "Không rõ dự án" ở các lần đọc từ phiên Codewhale**: không phải lỗi; tệp phiên chỉ có một mốc thời gian, chưa rõ nghĩa của `metadata.total_tokens` (không đoán), và chưa ghép được với phiên Claude đã giao khi việc do phiên khác (agy, Codex) giao.
+- **Làn DeepSeek có thời lượng 0, token chỉ có tổng gộp (không tách vào/ra) và dự án "Không rõ dự án" ở các lần đọc từ phiên Codewhale**: không phải lỗi; tệp phiên chỉ có một mốc thời gian, chưa rõ nghĩa của `metadata.total_tokens` (không đoán), và chưa ghép được với phiên Claude đã giao khi việc do phiên khác (agy, Codex) giao.
 - **Codex "Chưa rõ model" ở một số lần giao**: lệnh trong bản ghi Claude không ghi `-m` và không ghép được rollout; không đoán.
 - **Hội thoại agy trạng thái "chưa rõ"**: mã trạng thái cuối của DB không phân biệt thành công và lỗi.
 - **Server chạy tay không dừng được bằng `agent-board stop`**: lệnh tìm theo tệp PID rồi theo dòng lệnh; nếu có nhiều bản chạy chồng mà không phân biệt được thì từ chối dừng.
