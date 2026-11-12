@@ -1,6 +1,6 @@
 # Agent Board
 
-Bảng theo dõi cục bộ cho các phiên AI lập trình đang chạy trên máy: **Claude Code**, **Codex**, **Antigravity Opus** (Claude chạy qua agy), **Gemini Argon** (Gemini chạy qua agy) và **DeepSeek** (Codewhale CLI). Trả lời ba câu hỏi: ai đang làm việc gì ngay lúc này, Claude đã giao việc cho ai và kết quả ra sao, và lịch sử các lần giao việc theo thời gian và theo dự án.
+Bảng theo dõi cục bộ cho các phiên AI lập trình đang chạy trên máy: **Claude Code**, **Codex**, **Antigravity Claude** (Claude chạy qua agy), **Gemini** (Gemini chạy qua agy) và **DeepSeek** (Codewhale CLI). Trả lời ba câu hỏi: ai đang làm việc gì ngay lúc này, Claude đã giao việc cho ai và kết quả ra sao, và lịch sử các lần giao việc theo thời gian và theo dự án.
 
 Trang web chạy ở `http://127.0.0.1:8090`, chỉ đọc dữ liệu có sẵn trên máy, không gọi dịch vụ ngoài, không cài gói (Node 24 trở lên, dùng `node:sqlite` có sẵn).
 
@@ -8,7 +8,7 @@ Trang web chạy ở `http://127.0.0.1:8090`, chỉ đọc dữ liệu có sẵn
 
 - **Thẻ trạng thái và bộ đếm** cho từng làn: đang chạy hay rảnh, model và mức suy luận, việc đang làm, dự án, thời lượng và tổng token 24 giờ (kèm dải chip 24 giờ và dải chip theo khoảng/bộ lọc đang chọn). Thẻ Codex có thêm dòng "Cấu hình hiện tại".
 - **Dòng thời gian**: mỗi làn một hàng, mỗi lần giao việc là một thanh (thành công, lỗi, hết quota, đang chạy, chưa rõ phân biệt bằng hoa văn chứ không chỉ bằng màu). Khoảng 6 giờ, 24 giờ, 7 ngày, 30 ngày; lọc theo làn, model, dự án, giao chéo.
-- **Sơ đồ** kiểu mindmap tỏa tròn: Claude ở giữa, bốn nhánh Codex, Antigravity Opus, Gemini Argon, DeepSeek, rồi dự án, rồi từng lần giao; kích thước bóng theo thứ bậc `gốc > làn > dự án > lá` kèm bộ đếm thời gian/token và cỡ chữ bù theo mức thu phóng. Có nút "Căn giữa" (vừa phần lõi), "Xem tất cả" (vừa cả lá), và chế độ **Toàn màn hình chỉ sơ đồ** (`F11`, thoát bằng `Esc`, giữ màn hình sáng bằng Screen Wake Lock).
+- **Sơ đồ** kiểu mindmap tỏa tròn: Claude ở giữa, bốn nhánh Codex, Antigravity Claude, Gemini, DeepSeek, rồi dự án, rồi từng lần giao; kích thước bóng theo thứ bậc `gốc > làn > dự án > lá` kèm bộ đếm thời gian/token và cỡ chữ bù theo mức thu phóng. Có nút "Căn giữa" (vừa phần lõi), "Xem tất cả" (vừa cả lá), và chế độ **Toàn màn hình chỉ sơ đồ** (`F11`, thoát bằng `Esc`, giữ màn hình sáng bằng Screen Wake Lock).
 - **Giao chéo dự án**: khi Claude ở dự án A giao việc cho model làm việc ở dự án B, thẻ ghi "A → B", thanh và lá có mũi tên nhỏ, sơ đồ hiện đường cong nét đứt nối sang dự án đích (tự hiện khi đang chạy hoặc khi bấm vào lá), panel chi tiết nêu rõ cả hai dự án, và có bộ lọc riêng.
 - Cập nhật trực tiếp qua SSE, giao diện sáng/tối, hỗ trợ giảm chuyển động và bàn phím, dùng được trên màn hình hẹp.
 
@@ -51,7 +51,7 @@ Nguyên tắc an toàn (chi tiết ở [docs/KIEN-TRUC.md](docs/KIEN-TRUC.md)): 
 
 - Nhiều kết luận là **suy luận** từ cấu trúc dữ liệu không có lược đồ chính thức (hội thoại và số token agy, giờ kết thúc của lệnh chạy nền, ghép lệnh Claude với rollout Codex). Mức tin cậy từng suy luận ghi ở [docs/NGUON-DU-LIEU.md](docs/NGUON-DU-LIEU.md).
 - Mã trạng thái cuối của hội thoại agy không phân biệt thành công với lỗi, nên các lần agy giữ trạng thái "chưa rõ".
-- Tên làn chỉ là vai trò: làn Gemini Argon có thể chạy model Flash và làn Antigravity Opus có thể chạy Sonnet; mỗi lần chạy luôn ghi đúng model của nó.
+- Làn gắn với hãng, không gắn với một model: làn Gemini chạy mọi model Gemini (Flash là mặc định theo chính sách chọn model, Argon, Carbon, Pro) và làn Antigravity Claude chạy mọi model Claude (Sonnet là mặc định, Opus, Haiku); mỗi lần chạy luôn ghi đúng model của nó, và chỉ model của hãng khác làn mới bị ghi "model khác tên làn".
 - Làn DeepSeek: lần giao nhận diện từ lệnh `codewhale exec` (cả `codewhale.cmd`, alias `codew`) trong bản ghi Claude Code; lần làm đọc từ phiên Codewhale ở `~/.codewhale/sessions`. Tệp phiên chỉ có thời điểm tạo (bằng thời điểm cập nhật) nên thời lượng của lần đọc từ tệp phiên là 0, trạng thái cuối là `unknown`, và token lấy từ `metadata.total_tokens` làm số liệu "chỉ tổng" (hiện "Tổng: N token, số liệu gộp, chưa tách vào/ra"; nhiều khả năng là cộng dồn qua các lượt gọi nhưng chưa đối chiếu với hóa đơn DeepSeek). Lần giao qua wrapper `node deepseek-exec.mjs` (dự án từ `--cwd`) cũng được nhận diện; với tác vụ nền, phiên được ghép vào lần giao khi nằm trong khoảng chạy dù thông báo hoàn tất đến muộn. Lần chạy `exec` không công cụ (câu trả lời thuần) không được Codewhale lưu phiên, nên chỉ thấy qua lệnh Claude.
 - Chỉ Windows; một số mốc thời gian hiển thị theo giờ Việt Nam (UTC+7).
 

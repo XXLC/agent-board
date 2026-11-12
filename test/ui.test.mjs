@@ -331,15 +331,16 @@ test('Thẻ Codex tách model đã biết và cấu hình; model chưa rõ có g
   assert.match(fields.find(item => item.children[0].textContent === 'Model').children[1].textContent, /lệnh không ghi -m, chưa ghép rollout/);
 });
 
-test('Làn agy hiện model đẹp và thô; cảnh báo Flash hoặc Sonnet khác tên làn', () => {
+test('Làn agy hiện model đẹp và thô; cảnh báo model của hãng khác làn', () => {
   const ui = board();
+  // Model Claude ở làn Gemini và model Gemini ở làn Antigravity Claude mới bị coi là khác tên làn.
   ui.evaluate(`runs = [
-    { id: 'flash', lane: 'Argon', model: 'gemini-3.5-flash-lite', kind: 'giao việc', start: end - 3000_000, end: end - 1000 },
-    { id: 'sonnet', lane: 'Opus', model: 'claude-sonnet-5-5-high', kind: 'giao việc', start: end - 3000_000, end: end - 1000 },
+    { id: 'flash', lane: 'Opus', model: 'gemini-3.5-flash-lite', kind: 'giao việc', start: end - 3000_000, end: end - 1000 },
+    { id: 'sonnet', lane: 'Argon', model: 'claude-sonnet-5-5-high', kind: 'giao việc', start: end - 3000_000, end: end - 1000 },
   ]; state = { lanes: runs.map(run => ({ ...run, state: 'Rảnh', knownModel: run.model })) };
   renderCards(); renderChart(); showDetails(runs[0]);`);
-  assert.equal(ui.evaluate("cardElements.get('Opus').model.textContent"), 'Sonnet 5.5 · high');
-  assert.match(ui.evaluate("cardElements.get('Opus').model.title"), /Sonnet 5.5 · high \(claude-sonnet-5-5-high\)/);
+  assert.equal(ui.evaluate("cardElements.get('Argon').model.textContent"), 'Sonnet 5.5 · high');
+  assert.match(ui.evaluate("cardElements.get('Argon').model.title"), /Sonnet 5.5 · high \(claude-sonnet-5-5-high\)/);
   for (const bar of ui.ids.get('chart').querySelectorAll('.run-bar')) assert.match(bar.title, /model khác tên làn/);
   assert.equal(ui.ids.get('detail-fields').children.find(item => item.children[0].textContent === 'Ghi chú model').children[1].textContent, 'model khác tên làn');
 });

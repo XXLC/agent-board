@@ -1,5 +1,5 @@
 export const LANE_LABELS = Object.freeze({
-  Claude: 'Claude Code', Codex: 'Codex', Opus: 'Antigravity Opus', Argon: 'Gemini Argon', DeepSeek: 'DeepSeek',
+  Claude: 'Claude Code', Codex: 'Codex', Opus: 'Antigravity Claude', Argon: 'Gemini', DeepSeek: 'DeepSeek',
 });
 
 export function modelLabel(rawModel) {
@@ -12,9 +12,9 @@ export function modelLabel(rawModel) {
     label.family = match[1]; label.version = match[2].replaceAll('-', '.');
     label.name = `${match[1][0].toUpperCase()}${match[1].slice(1)} ${label.version}`;
     label.effort = suffix?.[1] || '';
-  } else if ((match = base.match(/^gemini-(\d+(?:[-.]\d+)*)-(argon|flash|pro)(-lite)?$/))) {
+  } else if ((match = base.match(/^gemini-(\d+(?:[-.]\d+)*)-(argon|carbon|flash|pro)(-lite)?$/))) {
     label.family = match[2]; label.version = match[1].replaceAll('-', '.');
-    label.name = match[2] === 'argon' ? 'Gemini Argon'
+    label.name = match[2] === 'argon' ? 'Gemini Argon' : match[2] === 'carbon' ? 'Gemini Carbon'
       : `Gemini ${label.version} ${match[2] === 'flash' ? 'Flash' : 'Pro'}${match[3] ? ' Lite' : ''}`;
     label.effort = suffix?.[1] || '';
   } else if (raw.startsWith('gpt-')) label.family = 'gpt';
@@ -22,10 +22,12 @@ export function modelLabel(rawModel) {
   return label;
 }
 
+// Làn agy gắn với hãng chứ không với một model: làn Gemini chạy mọi model Gemini (Flash, Argon, Carbon, Pro), làn Antigravity Claude
+// chạy mọi model Claude (Opus, Sonnet, Haiku). Chỉ model của hãng khác mới bị ghi "model khác tên làn".
+const LANE_FAMILIES = Object.freeze({ Argon: ['argon', 'carbon', 'flash', 'pro'], Opus: ['opus', 'sonnet', 'haiku'] });
 export function modelFamilyLane(lane, label) {
-  const expected = lane === 'Argon' || lane === LANE_LABELS.Argon ? 'argon'
-    : lane === 'Opus' || lane === LANE_LABELS.Opus ? 'opus' : '';
-  return { offLabel: Boolean(expected && label.raw && label.family !== expected) };
+  const key = lane === 'Argon' || lane === LANE_LABELS.Argon ? 'Argon' : lane === 'Opus' || lane === LANE_LABELS.Opus ? 'Opus' : '';
+  return { offLabel: Boolean(key && label.raw && !LANE_FAMILIES[key].includes(label.family)) };
 }
 
 export function modelText(run, includeRaw = false) {

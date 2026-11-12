@@ -78,7 +78,7 @@ Giao chéo dự án là khi phiên Claude ở dự án A giao agy hoặc Codex l
 - Thư mục thực thi được giải thành dự án bằng đúng hàm xác định dự án ở trên (không có logic suy dự án song song).
 - `crossProject` là true khi **cả hai** dự án (của lần giao và của thư mục thực thi) đều đã biết và khác nhau. Không tính là chéo: thư mục tạm hoặc scratchpad của phiên, `~/.claude`, dự án không rõ, phiên tương tác Codex và đoạn hoạt động Claude. Run mà dự án được suy ra từ chính thư mục thực thi (agy hoặc Codex độc lập) thì hai khóa trùng nên không chéo.
 - Chỉ khi `crossProject` là true run mới có `workProjectKey`, `workProjectLabel`, `workProjectPath`, `workProjectOutsideClaude`. Các trường này được tính ở lớp xuất (`runs()`, `state()`), không nằm trong dữ liệu quét nên không đổi hash kiểm hồi quy. `scan.statistics.crossProjects` có `{count, total}` với `total` là số lần giao đủ thông tin để xét.
-- Số liệu mẫu ngày 08/11/2026: 112 trên 663 lần giao đủ thông tin là chéo (Codex 77, Gemini Argon 29, Antigravity Opus 6; theo nguồn: rollout Codex 67, hội thoại agy 35, lệnh có `-C` 10). Trong đó 34 hội thoại agy đã ghép với lệnh Claude khớp đúng 34 trường hợp được người dùng xác nhận là giao chéo.
+- Số liệu mẫu ngày 08/11/2026: 112 trên 663 lần giao đủ thông tin là chéo (Codex 77, làn Gemini 29, làn Antigravity Claude 6 (tên cũ lúc đó: Gemini Argon, Antigravity Opus); theo nguồn: rollout Codex 67, hội thoại agy 35, lệnh có `-C` 10). Trong đó 34 hội thoại agy đã ghép với lệnh Claude khớp đúng 34 trường hợp được người dùng xác nhận là giao chéo.
 
 ## Bộ đếm thời gian và token
 
@@ -101,7 +101,7 @@ Trên từng làn của `/api/state` (`laneTokenMetrics` trong `lib/tokens.mjs`)
 
 ## Model và làn
 
-Làn là vai trò, model là sự thật. Làn "Gemini Argon" có cả `gemini-*-flash*`, làn "Antigravity Opus" có cả `claude-sonnet-*`. `modelLabel(id)` đổi id thô thành tên đọc được ("Opus 5.5 · high", "Gemini Argon · high", "Gemini 3.5 Flash Lite"); id Codex (`gpt-*`) giữ nguyên, id lạ giữ nguyên, rỗng là "Chưa rõ model". Hậu tố `-low|-medium|-high` là mức suy luận. Model lệch tên làn được đánh dấu `offLabel`.
+Làn gắn với hãng, model là sự thật. Làn "Gemini" có `gemini-*-flash*`, `argon`, `carbon`, `pro`; làn "Antigravity Claude" có `claude-opus-*`, `sonnet`, `haiku` (chính sách chọn model từ 12/11/2026: Gemini chủ yếu Flash, Antigravity Claude chạy Sonnet). `modelLabel(id)` đổi id thô thành tên đọc được ("Opus 5.5 · high", "Gemini Argon · high", "Gemini 3.5 Flash Lite"); id Codex (`gpt-*`) giữ nguyên, id lạ giữ nguyên, rỗng là "Chưa rõ model". Hậu tố `-low|-medium|-high` là mức suy luận. Model của hãng khác làn (Claude ở làn Gemini, Gemini ở làn Antigravity Claude) được đánh dấu `offLabel`; cùng hãng khác họ thì không.
 
 ## Giới hạn
 

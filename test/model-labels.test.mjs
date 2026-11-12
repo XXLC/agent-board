@@ -37,16 +37,23 @@ for (const [raw, name, family, version, effort] of cases) test(`Nhãn model ${ra
 });
 
 test('Làn giữ tên hiển thị riêng và chỉ cảnh báo model khác tên làn khi có model', () => {
-  assert.deepEqual(LANE_LABELS, { Claude: 'Claude Code', Codex: 'Codex', Opus: 'Antigravity Opus', Argon: 'Gemini Argon', DeepSeek: 'DeepSeek' });
+  assert.deepEqual(LANE_LABELS, { Claude: 'Claude Code', Codex: 'Codex', Opus: 'Antigravity Claude', Argon: 'Gemini', DeepSeek: 'DeepSeek' });
+  // Làn Gemini: mọi model Gemini đều đúng làn (Flash là mặc định, Argon và Carbon cũng vậy); chỉ model hãng khác mới lệch.
   for (const lane of ['Argon', LANE_LABELS.Argon]) {
-    assert.equal(modelFamilyLane(lane, modelLabel('gemini-4-argon-high')).offLabel, false);
-    assert.equal(modelFamilyLane(lane, modelLabel('gemini-3.5-flash-lite')).offLabel, true);
-    assert.equal(modelFamilyLane(lane, modelLabel('')).offLabel, false);
-  }
-  for (const lane of ['Opus', LANE_LABELS.Opus]) {
-    assert.equal(modelFamilyLane(lane, modelLabel('claude-opus-5-5-medium')).offLabel, false);
+    for (const id of ['gemini-4-argon-high', 'gemini-3.8-flash-high', 'gemini-3.5-flash-lite', 'gemini-4-carbon-high', 'gemini-3-pro-high', '']) {
+      assert.equal(modelFamilyLane(lane, modelLabel(id)).offLabel, false, id);
+    }
     assert.equal(modelFamilyLane(lane, modelLabel('claude-sonnet-5-5-high')).offLabel, true);
+    assert.equal(modelFamilyLane(lane, modelLabel('gpt-6.1-sol')).offLabel, true);
   }
+  // Làn Antigravity Claude: Opus, Sonnet, Haiku đều đúng làn.
+  for (const lane of ['Opus', LANE_LABELS.Opus]) {
+    for (const id of ['claude-opus-5-5-medium', 'claude-sonnet-5-5-high', 'claude-haiku-5-5-low']) {
+      assert.equal(modelFamilyLane(lane, modelLabel(id)).offLabel, false, id);
+    }
+    assert.equal(modelFamilyLane(lane, modelLabel('gemini-3.8-flash-high')).offLabel, true);
+  }
+  assert.deepEqual(modelLabel('gemini-4-carbon-high'), { name: 'Gemini Carbon', family: 'carbon', version: '4', effort: 'high', raw: 'gemini-4-carbon-high' });
   assert.equal(modelFamilyLane('Claude', modelLabel('claude-opus-5-5')).offLabel, false);
   assert.equal(modelText({ lane: 'Codex', model: '' }), 'Chưa rõ model (lệnh không ghi -m, chưa ghép rollout)');
 });

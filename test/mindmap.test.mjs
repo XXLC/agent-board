@@ -106,8 +106,8 @@ test('Nhãn làn dài, model lá và nhiều dòng tóm tắt Claude không ch�
     assert.deepEqual(collisions(layout.nodes.map(node => ({ ...node, r: node.reserve }))), []);
     assert.ok(layout.nodes.every(node => node.reserve >= labelRadius(node)));
   }
-  assert.equal(next.nodes.find(node => node.id === 'lane:Opus').label, 'Antigravity Opus');
-  assert.equal(next.nodes.find(node => node.id === 'lane:Argon').label, 'Gemini Argon');
+  assert.equal(next.nodes.find(node => node.id === 'lane:Opus').label, 'Antigravity Claude');
+  assert.equal(next.nodes.find(node => node.id === 'lane:Argon').label, 'Gemini');
   assert.equal(next.nodes[0].subtitleLines.length, 5);
 });
 

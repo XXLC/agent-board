@@ -340,8 +340,8 @@ test('Mindmap dùng tên làn chung, tóm tắt model Claude và ghi model, effo
   const ui = board();
   ui.window.boardMindmap.update([
     { ...sample, model: 'gpt-6.1-sol', effort: 'high', modelSource: 'rollout' },
-    { ...sample, id: 'flash', lane: 'Argon', model: 'gemini-3.5-flash-lite' },
-    { ...sample, id: 'sonnet', lane: 'Opus', model: 'claude-sonnet-5-5-high' },
+    { ...sample, id: 'flash', lane: 'Opus', model: 'gemini-3.5-flash-lite' },
+    { ...sample, id: 'sonnet', lane: 'Argon', model: 'claude-sonnet-5-5-high' },
   ], () => {}, 'model', [
     { ...sample, id: 'claude-sonnet', lane: 'Claude', model: 'claude-sonnet-5-5' },
     { ...sample, id: 'claude-opus', lane: 'Claude', model: 'claude-opus-5-5' },
