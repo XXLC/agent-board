@@ -29,6 +29,15 @@ test('Làn DeepSeek có tên hiển thị riêng và model deepseek- không rơi
   assert.equal(LANE_LABELS.DeepSeek, 'DeepSeek');
 });
 
+test('Từ quota chỉ tính khi đứng riêng: tên ai-quota-bar, agy-quota-bar, aiQuota không phải hết quota', () => {
+  for (const text of ['Background command "Giao Codex thêm DeepSeek vào ai-quota-bar" completed', 'D:\\Workspace\\agy-quota-bar\\src\\a.js', 'aiQuota.refresh đã chạy', 'đường dẫn task-quotabar.txt']) {
+    assert.equal(resultStatus(text), 'ok', text);
+  }
+  for (const text of ['Individual quota reached. Resets in 96h', 'Error: quota exceeded', 'hết quota rồi', 'You\'ve hit your usage limit']) {
+    assert.equal(resultStatus(text), 'quota', text);
+  }
+});
+
 test('Hết số dư 402 chỉ nhận khi đi kèm ngữ cảnh lỗi; số 402 trần không phải quota', () => {
   assert.equal(resultStatus('HTTP 402 Insufficient Balance'), 'quota');
   assert.equal(resultStatus('Error: status code: 402'), 'quota');
