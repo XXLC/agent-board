@@ -32,7 +32,9 @@ export function coverageText(value, total) {
 }
 
 export function unreadTokenReason(lane) {
-  return ['Opus', 'Argon'].includes(lane) ? 'chưa có lần gọi model nào hoàn tất để tính token' : 'Nguồn chưa cung cấp số liệu token';
+  if (['Opus', 'Argon'].includes(lane)) return 'chưa có lần gọi model nào hoàn tất để tính token';
+  if (lane === 'DeepSeek') return 'tệp phiên Codewhale chỉ ghi tổng token gộp, chưa tách thành phần vào/ra';
+  return 'Nguồn chưa cung cấp số liệu token';
 }
 
 export function laneCounters(lane, now, receivedAt = now) {

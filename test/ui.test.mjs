@@ -96,7 +96,7 @@ test('Dải thường, chip chỉ sơ đồ và thẻ hiện token, độ phủ,
   ui.stateEvents.get('state')({ data: JSON.stringify(counterState()) });
   for (const id of ['counters', 'map-counters']) {
     const chips = ui.ids.get(id).children;
-    assert.equal(chips.length, 4);
+    assert.equal(chips.length, 5);
     assert.equal(chips[1].children[0].textContent, 'Codex');
     assert.match(chips[1].children[1].textContent, /24 giờ: chạy 1 phút 0 giây · 1.500 token · đang chạy: 1.500 token/);
     assert.match(chips[1].title, /Suy luận.*30 token.*Tổng: 1.500 token.*2\/3 lần có số liệu/);

@@ -37,7 +37,7 @@ for (const [raw, name, family, version, effort] of cases) test(`Nhãn model ${ra
 });
 
 test('Làn giữ tên hiển thị riêng và chỉ cảnh báo model khác tên làn khi có model', () => {
-  assert.deepEqual(LANE_LABELS, { Claude: 'Claude Code', Codex: 'Codex', Opus: 'Antigravity Opus', Argon: 'Gemini Argon' });
+  assert.deepEqual(LANE_LABELS, { Claude: 'Claude Code', Codex: 'Codex', Opus: 'Antigravity Opus', Argon: 'Gemini Argon', DeepSeek: 'DeepSeek' });
   for (const lane of ['Argon', LANE_LABELS.Argon]) {
     assert.equal(modelFamilyLane(lane, modelLabel('gemini-4-argon-high')).offLabel, false);
     assert.equal(modelFamilyLane(lane, modelLabel('gemini-3.5-flash-lite')).offLabel, true);

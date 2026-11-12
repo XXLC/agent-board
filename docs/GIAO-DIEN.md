@@ -4,7 +4,7 @@ Giao diện là HTML, CSS và JS thuần trong `public/`, không framework, khô
 
 ## Tên làn và model
 
-Mã làn nội bộ (`Claude`, `Codex`, `Opus`, `Argon`) giữ nguyên ở API. Tên hiển thị nằm ở hằng số `LANE_LABELS` trong `public/model-labels.js`: **Claude Code**, **Codex**, **Antigravity Opus** (Claude chạy qua agy), **Gemini Argon** (Gemini chạy qua agy). Tên làn chỉ là vai trò, nên mỗi lần chạy luôn ghi đúng model; model lệch tên làn có chú thích "model khác tên làn" ở chi tiết và tooltip.
+Mã làn nội bộ (`Claude`, `Codex`, `Opus`, `Argon`, `DeepSeek`) giữ nguyên ở API. Tên hiển thị nằm ở hằng số `LANE_LABELS` trong `public/model-labels.js`: **Claude Code**, **Codex**, **Antigravity Opus** (Claude chạy qua agy), **Gemini Argon** (Gemini chạy qua agy), **DeepSeek** (Codewhale CLI). Tên làn chỉ là vai trò, nên mỗi lần chạy luôn ghi đúng model; model lệch tên làn có chú thích "model khác tên làn" ở chi tiết và tooltip.
 
 Trong làn Claude Code, Sonnet và Opus phân biệt bằng chữ và hoa văn, không chỉ bằng màu: tiền tố "S 5.5" và "O 5.5", viền đôi cho Opus; thẻ ghi số đoạn theo model. Thẻ Claude Code ghi số đoạn theo model trong 24 giờ và **liệt kê cả phiên bản mới nhất của mỗi họ model đã dùng trong 7 ngày** dù chưa có đoạn nào trong khung (số 0, ví dụ "Opus 5.5 x 0"), để thấy Claude còn dùng Opus 5.5; model cũ (Sonnet 5, Opus 4.8) chỉ hiện khi thật sự có đoạn trong khung (`latestPerFamily` trong `public/model-labels.js`, dữ liệu `models7d` ở `/api/state`). Nút gốc của sơ đồ liệt kê model theo đúng quy tắc đó. Bộ lọc **Model** liệt kê tên đẹp kèm số lần ("Sonnet 5.5 (22)") và dùng chung cho cả dòng thời gian và sơ đồ.
 

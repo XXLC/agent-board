@@ -5,7 +5,7 @@ import path from 'node:path';
 import http from 'node:http';
 import { once } from 'node:events';
 import { fileURLToPath } from 'node:url';
-import { addActivity, identifier, mergeCodex, parseCommands, promptPreview, redact, resultStatus, validHost } from '../lib/parsers.mjs';
+import { addActivity, extractCodewhaleOutput, identifier, mergeCodewhale, mergeCodex, parseCommands, promptPreview, redact, resultStatus, validHost } from '../lib/parsers.mjs';
 import { Scanner } from '../lib/scanner.mjs';
 import { summarizeProcesses } from '../lib/processes.mjs';
 import { createBoardServer } from '../server.mjs';
@@ -195,7 +195,7 @@ test('HTTP từ chối Host lạ, giữ CSP và phục vụ SSE', async () => {
   try {
     assert.equal((await request('/api/state', 'ngoài.test:8090')).status, 403);
     const response = await request('/api/state', 'localhost:8090');
-    assert.equal(response.status, 200); assert.equal(JSON.parse(response.body).lanes.length, 4); assert.equal(response.headers['cache-control'], 'no-store');
+    assert.equal(response.status, 200); assert.equal(JSON.parse(response.body).lanes.length, 5); assert.equal(response.headers['cache-control'], 'no-store');
     assert.ok(response.headers['content-security-policy'].includes("script-src 'self'")); assert.ok(!response.headers['access-control-allow-origin']);
     assert.equal((await request('/api/runs?from=sai', 'localhost:8090')).status, 400);
     assert.equal((await request('/', 'localhost:8090')).status, 200);

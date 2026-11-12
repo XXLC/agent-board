@@ -12,7 +12,8 @@
   --claude:#e69f00;
   --codex:#56b4e9;
   --opus:#cc79a7;
-  --argon:#009e73
+  --argon:#009e73;
+  --deepseek:#d55e00
 }
 
 @media(prefers-color-scheme:light) {
@@ -29,7 +30,8 @@
     --claude:#a66c00;
     --codex:#0072b2;
     --opus:#a75088;
-    --argon:#007f5f
+    --argon:#007f5f;
+    --deepseek:#b84800
   }
 }
 
@@ -118,7 +120,7 @@ h2 {
 /* Thẻ trạng thái từng làn. */
 .cards {
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(5,minmax(0,1fr));
   gap:14px
 }
 
@@ -626,6 +628,12 @@ footer p {
 }
 
 /* Bố cục cho màn hình nhỏ. */
+@media(max-width:1150px) {
+  .cards {
+    grid-template-columns:repeat(3,minmax(0,1fr))
+  }
+}
+
 @media(max-width:900px) {
   main {
     padding:26px 22px

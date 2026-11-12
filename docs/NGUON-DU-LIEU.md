@@ -33,6 +33,13 @@ Lời nhắc thường đi qua stdin (đối số `-`), nên không nằm trong 
 - Ghép với lệnh Claude: cùng dự án (hoặc cùng phiên Claude), giờ bắt đầu lệch tối đa 120 giây, một đối một, cặp gần nhất trước. Giờ, model, effort ưu tiên rollout.
 - `modelSource`: `rollout`, `lệnh` (`-m`) hoặc `chưa rõ`. Không đoán model; thẻ Codex có dòng "Cấu hình hiện tại" nhưng đó chỉ là mặc định lúc này.
 
+## DeepSeek / Codewhale (`~/.codewhale/sessions/*.json`)
+
+- Giao: lệnh `codewhale exec ...` (cũng `codewhale.cmd`, đường dẫn đầy đủ, alias `codew`) trong bản ghi Claude Code; bỏ qua `--help`, `--version`, lệnh con khác và chuỗi trích dẫn. Model lấy từ `--model`/`-m` hoặc `--set model=...`; không có thì `chưa rõ`, không đoán. Thư mục làm việc đến từ cờ toàn cục `-C`/`--workspace` đặt trước `exec` (đã thử thật) hoặc từ lệnh `cd` trước đó.
+- Làm: mỗi tệp phiên là một run (`metadata.id`, `model`, `workspace`, `created_at`, `title`, `mode`). Chỉ các lần `--auto` (có công cụ) hoặc tiếp tục phiên được lưu; `exec` thuần câu trả lời không lưu phiên.
+- Hạn chế đã đo ngày 12/11/2026: `created_at` bằng `updated_at` nên thời lượng là 0 (nếu `metadata.cumulative_turn_secs` > 0 thì mã dùng nó làm thời lượng và lùi mốc bắt đầu; chưa quan sát giá trị khác 0 nên ý nghĩa chưa được xác minh); chưa có trạng thái cuối (`unknown`); `metadata.total_tokens` chỉ là một tổng chưa rõ nghĩa cộng dồn nên token ở lần đọc từ tệp phiên là "chưa đọc được token". Token trong trường `usage` của đầu ra lệnh (nếu có) được đọc theo trường kiểu DeepSeek API (`prompt_cache_hit_tokens`, `prompt_cache_miss_tokens`, `output_tokens`, `reasoning_tokens`): chưa quan sát thật.
+- Trạng thái hết số dư: `HTTP 402`/`status code: 402`/`insufficient balance` và `429` được tính là `quota`; số 402 trần trong đầu ra không tính (đã gây phân loại nhầm ba lần chạy Codex khi thử).
+
 ## Antigravity / agy (`~/.gemini/antigravity-cli/conversations/*.db`)
 
 Mỗi tệp `.db` là SQLite thường (không mã hóa) với blob protobuf không có lược đồ. Cách đọc và độ tin cậy:

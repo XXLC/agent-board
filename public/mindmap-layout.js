@@ -3,7 +3,7 @@ import { activityPhase } from './activity.js';
 import { nodeCounters } from './counters.js';
 
 export { isBrowserFullscreen };
-export const MINDMAP_LANES = ['Codex', 'Opus', 'Argon'];
+export const MINDMAP_LANES = ['Codex', 'Opus', 'Argon', 'DeepSeek'];
 const TAU = Math.PI * 2;
 export const NODE_RADII = {
   project: { min: 74, max: 90 }, lane: { min: 126, max: 132 }, root: { min: 165, max: 190 },
@@ -121,10 +121,11 @@ export function layoutMindmap(runs, options = {}) {
   const work = runs.filter(run => MINDMAP_LANES.includes(run.lane)
     && run.kind !== 'tương tác' && run.kind !== 'hoạt động');
   const weights = MINDMAP_LANES.map(lane => Math.sqrt(work.filter(run => run.lane === lane).length));
-  const total = weights.reduce((sum, weight) => sum + weight, 0) || 3;
+  const total = weights.reduce((sum, weight) => sum + weight, 0) || MINDMAP_LANES.length;
+  const minSpan = 70 * Math.PI / 180;
   let angle = -Math.PI / 2;
   const arcs = previous?.arcs || MINDMAP_LANES.map((lane, i) => {
-    const span = 70 * Math.PI / 180 + (TAU - 210 * Math.PI / 180) * (weights[i] || (work.length ? 0 : 1)) / total;
+    const span = minSpan + (TAU - MINDMAP_LANES.length * minSpan) * (weights[i] || (work.length ? 0 : 1)) / total;
     const arc = { lane, start: angle, end: angle + span };
     angle += span;
     return arc;

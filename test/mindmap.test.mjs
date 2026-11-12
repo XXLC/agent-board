@@ -68,7 +68,7 @@ test('Thêm lần giao và tăng thời lượng giữ nguyên vị trí nút c�
 
 test('Làn trống, phiên Claude, end null và thang kích thước có giới hạn', () => {
   const empty = layoutMindmap([], { now });
-  assert.equal(empty.nodes.length, 4);
+  assert.equal(empty.nodes.length, 5);
   assert.equal(empty.count, 0);
   assert.ok(empty.nodes.filter(node => node.type === 'lane').every(node => node.count === 0));
   const layout = layoutMindmap([

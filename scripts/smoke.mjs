@@ -54,7 +54,7 @@ try {
       bắtĐầuQuá90Ngày: runs.filter(r => r.start < Date.now() - 90 * 86_400_000).length,
     },
     giờKếtThúcƯớcLượng: { sốThanh: estimated.length, giớiHạn60Phút: true },
-    theoLàn: Object.fromEntries(['Claude', 'Codex', 'Opus', 'Argon'].map(lane => [lane, { tổng: runs.filter(r => r.lane === lane).length, giaoViệc: runs.filter(r => r.lane === lane && !['hoạt động', 'tương tác'].includes(r.kind)).length, tươngTác: runs.filter(r => r.lane === lane && r.kind === 'tương tác').length, kiểmTra: runs.filter(r => r.lane === lane && r.kind === 'kiểm tra').length, đangChạy: runs.filter(r => r.lane === lane && r.running).length, kếtQuả: Object.fromEntries(['ok', 'error', 'quota', 'unknown'].map(s => [s, runs.filter(r => r.lane === lane && r.status === s).length])) }])),
+    theoLàn: Object.fromEntries(['Claude', 'Codex', 'Opus', 'Argon', 'DeepSeek'].map(lane => [lane, { tổng: runs.filter(r => r.lane === lane).length, giaoViệc: runs.filter(r => r.lane === lane && !['hoạt động', 'tương tác'].includes(r.kind)).length, tươngTác: runs.filter(r => r.lane === lane && r.kind === 'tương tác').length, kiểmTra: runs.filter(r => r.lane === lane && r.kind === 'kiểm tra').length, đangChạy: runs.filter(r => r.lane === lane && r.running).length, kếtQuả: Object.fromEntries(['ok', 'error', 'quota', 'unknown'].map(s => [s, runs.filter(r => r.lane === lane && r.status === s).length])) }])),
     hostLạ: Number(host.stdout),
     trangChủ: 'Đã nhận HTML',
     tăngDần: {

@@ -1,5 +1,5 @@
 export const LANE_LABELS = Object.freeze({
-  Claude: 'Claude Code', Codex: 'Codex', Opus: 'Antigravity Opus', Argon: 'Gemini Argon',
+  Claude: 'Claude Code', Codex: 'Codex', Opus: 'Antigravity Opus', Argon: 'Gemini Argon', DeepSeek: 'DeepSeek',
 });
 
 export function modelLabel(rawModel) {
@@ -18,6 +18,7 @@ export function modelLabel(rawModel) {
       : `Gemini ${label.version} ${match[2] === 'flash' ? 'Flash' : 'Pro'}${match[3] ? ' Lite' : ''}`;
     label.effort = suffix?.[1] || '';
   } else if (raw.startsWith('gpt-')) label.family = 'gpt';
+  else if (raw.startsWith('deepseek-')) label.family = 'deepseek';
   return label;
 }
 
@@ -30,6 +31,7 @@ export function modelFamilyLane(lane, label) {
 export function modelText(run, includeRaw = false) {
   const label = modelLabel(run.model);
   if (!label.raw && run.lane === 'Codex') return 'Chưa rõ model (lệnh không ghi -m, chưa ghép rollout)';
+  if (!label.raw && run.lane === 'DeepSeek') return 'Chưa rõ model (lệnh không ghi -m, chưa ghép phiên)';
   const effort = run.effort || label.effort;
   return label.name + (effort ? ` · ${effort}` : '') + (includeRaw && label.raw ? ` (${label.raw})` : '');
 }

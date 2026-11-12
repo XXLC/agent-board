@@ -1,6 +1,6 @@
 # Agent Board: hướng dẫn cho agent và người đóng góp
 
-Bảng web cục bộ theo dõi Claude Code, Codex, Antigravity Opus và Gemini Argon. Tổng quan ở [README.md](README.md); kiến trúc, nguồn dữ liệu, giao diện, kiểm thử ở [docs/](docs/). Tệp này là bản gốc; `CLAUDE.md` và `GEMINI.md` chỉ trỏ về đây kèm vài ghi chú riêng của từng công cụ.
+Bảng web cục bộ theo dõi Claude Code, Codex, Antigravity Opus, Gemini Argon và DeepSeek (Codewhale). Tổng quan ở [README.md](README.md); kiến trúc, nguồn dữ liệu, giao diện, kiểm thử ở [docs/](docs/). Tệp này là bản gốc; `CLAUDE.md` và `GEMINI.md` chỉ trỏ về đây kèm vài ghi chú riêng của từng công cụ.
 
 ## Quy tắc bắt buộc
 

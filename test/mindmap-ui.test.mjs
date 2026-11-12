@@ -139,7 +139,9 @@ test('Phóng, thu, kéo, căn lõi, xem tất cả và đổi khung chỉ sửa 
     children: [...item.group.children], rows: item.textRows.map(({ element }) => [element, element.attributes.y]),
   }));
   const lane = items.find(item => item.node.id === 'lane:Codex');
-  const originalStyle = lane.label.attributes.style;
+  // Nhãn làn có thể đã chạm trần 32px ở khung mặc định khi có năm làn; nhãn gốc (trần 44px) vẫn đổi khi thu nhỏ.
+  const root = items.find(item => item.node.id === 'root');
+  const originalStyle = root.label.attributes.style;
   const svg = ui.ids.get('mindmap');
   const core = svg.attributes.viewBox;
   // Cấm mọi đường dựng chữ và tính bố cục sau khi đã vẽ.
@@ -149,7 +151,7 @@ test('Phóng, thu, kéo, căn lõi, xem tất cả và đổi khung chỉ sửa 
     Object.defineProperty(element, 'textContent', { get: () => text, set() { throw new Error('Chỉ được đổi thuộc tính'); } });
   }
   ui.ids.get('map-zoom-out').events.click();
-  assert.notEqual(lane.label.attributes.style, originalStyle);
+  assert.notEqual(root.label.attributes.style, originalStyle);
   assert.equal(lane.counterLabel.attributes.display, 'none');
   ui.ids.get('map-zoom-in').events.click();
   svg.events.wheel({ preventDefault() {}, deltaY: 1, clientX: 200, clientY: 200 });

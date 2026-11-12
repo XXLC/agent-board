@@ -31,7 +31,7 @@ function hasClass(el, name) {
   return String(el.className || el.attributes?.class || '').split(/\s+/).includes(name);
 }
 const defs = shape('defs');
-for (const lane of ['Codex', 'Opus', 'Argon']) {
+for (const lane of ['Codex', 'Opus', 'Argon', 'DeepSeek']) {
   const pattern = shape('pattern', { id: `quota-${lane}`, width: 8, height: 8, patternUnits: 'userSpaceOnUse' });
   pattern.append(shape('rect', { width: 8, height: 8, fill: 'var(--raised)' }));
   pattern.append(shape('path', { d: 'M-2 2 L2 -2 M0 8 L8 0 M6 10 L10 6', stroke: laneColor(lane), 'stroke-width': 3 }));

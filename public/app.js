@@ -6,7 +6,7 @@ import { formatDuration, formatTokens, tokenBreakdown, coverageText, unreadToken
 const $ = id => document.getElementById(id);
 watchActivityVisibility(document);
 const lanes = Object.keys(LANE_LABELS);
-const colors = { Claude: 'var(--claude)', Codex: 'var(--codex)', Opus: 'var(--opus)', Argon: 'var(--argon)' };
+const colors = { Claude: 'var(--claude)', Codex: 'var(--codex)', Opus: 'var(--opus)', Argon: 'var(--argon)', DeepSeek: 'var(--deepseek)' };
 const local = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 const tickFormat = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 let hours = 6, end = Date.now(), following = true, zoom = 1, runs = [], state, selected = null, pinned = false;
@@ -143,7 +143,8 @@ function renderState() {
   $('scan-footer').textContent = `Quét gần nhất: ${scan.lastScan ? format(Date.parse(scan.lastScan)) : 'Đang quét lần đầu'}`
     + ` · ${scan.scannedFiles} tệp · ${duration(scan.durationMs)}`
     + (scan.initialDurationMs != null ? ` · Lần đầu ${(scan.initialDurationMs / 1000).toFixed(1)} giây` : '')
-    + (scan.agy ? ` · agy: ${scan.agy.conversationsRead} hội thoại, ${scan.agy.merged} đã ghép` : '');
+    + (scan.agy ? ` · agy: ${scan.agy.conversationsRead} hội thoại, ${scan.agy.merged} đã ghép` : '')
+    + (scan.statistics?.codewhale ? ` · Codewhale: ${scan.statistics.codewhale.sessionsRead} phiên, ${scan.statistics.codewhale.merged} đã ghép` : '');
   const prompts = scan.statistics?.codexPrompts;
   if (prompts) {
     const available = prompts.lệnh + prompts.rollout + prompts.tệp;
@@ -230,7 +231,7 @@ function showDetails(run, pin = false) {
   const names = { ok: 'thành công', error: 'lỗi', quota: 'hết quota', unknown: 'chưa rõ' };
   const fields = [
     ['Làn', LANE_LABELS[run.lane] || run.lane], ['Model', modelText(run, true)],
-    ...(run.lane === 'Codex' ? [['Nguồn model', run.modelSource || 'chưa rõ']] : []),
+    ...(['Codex', 'DeepSeek'].includes(run.lane) ? [['Nguồn model', run.modelSource || 'chưa rõ']] : []),
     ...(modelNote(run) ? [['Ghi chú model', modelNote(run)]] : []),
     ['Bắt đầu', format(run.start)], ['Kết thúc', run.running ? 'Đang chạy' : format(run.end)],
     ['Trạng thái', run.running ? activityText(run) : names[run.status] || 'chưa rõ'],
@@ -241,6 +242,7 @@ function showDetails(run, pin = false) {
     ['Thư mục dự án', run.projectPath || 'Chưa rõ', true], ['Mã phiên nguồn', run.sourceSession, true],
     ...(run.rolloutSession ? [['Mã rollout ghép', run.rolloutSession, true]] : []),
     ...(run.agySession ? [['Mã hội thoại agy ghép', run.agySession, true]] : []),
+    ...(run.codewhaleSession ? [['Mã phiên Codewhale ghép', run.codewhaleSession, true]] : []),
     ...(run.endEstimated ? [
       ['Độ chính xác', 'Giờ kết thúc ước lượng, thanh giới hạn tối đa 60 phút.', true],
       ['Mốc ước lượng ban đầu', format(run.endRaw), true],
